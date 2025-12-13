@@ -1,22 +1,22 @@
 // =============================================================
-//  军师小剧场 V10.0 - 样式随机 & 世界书排版引擎
-//  核心：导入世界书作为样式库，支持指定样式或随机抽取
+//  军师小剧场 V11.0 - 世界书原生读取版
+//  核心：完全适配酒馆 World Info 格式，支持书籍/条目层级显示
 // =============================================================
 
 (function() {
-    console.log("🚀 军师插件 V10.0 (样式引擎) 正在启动...");
+    console.log("🚀 军师插件 V11.0 (世界书原生版) 已注入...");
 
-    const BOX_ID = 'aiAdvisorBox_v10';
-    const BTN_ID = 'st-entry-btn-v10';
+    const BOX_ID = 'aiAdvisorBox_v11';
+    const BTN_ID = 'st-entry-btn-v11';
     
-    // 本地存储 Key
-    const STORAGE_KEY = 'st_junshi_styles_v10';
-    const FAV_KEY = 'st_junshi_favs_v10';
+    // 数据存储 Key
+    const STORAGE_KEY = 'st_junshi_worldbooks_v11';
+    const FAV_KEY = 'st_junshi_favs_v11';
 
-    // 1. 注入 CSS (蓝黄高颜值 + 强制置顶)
+    // 1. 注入 CSS (保持蓝黄配色，优化下拉菜单显示)
     const style = document.createElement('style');
     style.innerHTML = `
-        /* 悬浮球 - 强制最高层级 */
+        /* 悬浮球 - 强制置顶 */
         #${BTN_ID} {
             position: fixed !important; bottom: 120px !important; right: 20px !important;
             width: 50px; height: 50px; background: #fff;
@@ -31,7 +31,7 @@
         /* 主窗口 */
         #${BOX_ID} {
             position: fixed !important; bottom: 100px; left: 20px; z-index: 2147483647 !important;
-            width: 340px; height: 550px; min-width: 280px; min-height: 400px;
+            width: 350px; height: 580px; min-width: 300px; min-height: 400px;
             background: #fff; border: 3px solid #74b9ff; border-radius: 15px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
             display: none; flex-direction: column; font-family: "Microsoft YaHei", sans-serif;
@@ -45,14 +45,17 @@
             display: flex; justify-content: space-between; align-items: center; user-select: none;
         }
 
-        /* 导入区 */
-        .import-section {
-            background: #fffbf0; padding: 8px; border-bottom: 1px solid #ffeaa7;
-            display: flex; align-items: center; justify-content: space-between;
+        /* 书架管理区 */
+        .book-shelf {
+            background: #fffbf0; padding: 10px; border-bottom: 1px solid #ffeaa7;
         }
-        .file-btn {
-            background: #fab1a0; color: white; border: none; border-radius: 5px;
-            padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight:bold;
+        .import-btn {
+            background: #00b894; color: white; border: none; border-radius: 5px;
+            padding: 5px 10px; font-size: 12px; cursor: pointer; width: 100%;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .current-book-info {
+            font-size: 11px; color: #d63031; margin-top: 5px; text-align: center;
         }
 
         /* 聊天显示区 */
@@ -71,10 +74,12 @@
             display: flex; flex-direction: column; gap: 8px;
         }
         
+        /* 下拉菜单分组样式 */
         #style-select {
             width: 100%; padding: 8px; border: 2px solid #74b9ff; border-radius: 8px;
             background: #f0f9ff; color: #0984e3; font-size: 12px; font-weight: bold; outline: none;
         }
+        optgroup { font-style: normal; color: #555; background: #fff; }
 
         .input-group { display: flex; gap: 5px; }
         #reqInput {
@@ -93,196 +98,234 @@
     `;
     document.head.appendChild(style);
 
-    // 2. 数据管理逻辑
-    function getStyles() {
+    // 2. 数据管理：读取世界书
+    // 存储结构：Array [{ bookName: "文件名", entries: [{name, content}, ...] }]
+    function getLibrary() {
         return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     }
-    
-    // 解析世界书 JSON，提取 entries 作为样式
-    function importWorldBook(json) {
-        let newStyles = [];
-        
-        // 兼容两种格式：直接是 entries 数组，或者是包含 entries 的对象
-        let entries = Array.isArray(json) ? json : (json.entries ? json.entries : []);
 
-        if (entries.length === 0) {
-            alert("❌ 这个JSON文件里没有内容 (entries为空)！");
-            return;
+    function saveLibrary(lib) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(lib));
+        renderSelector();
+        updateBookStatus();
+    }
+
+    // 解析酒馆格式
+    function parseAndImport(file, json) {
+        let entries = [];
+        
+        // 情况A: 标准酒馆格式 { "entries": { "0": {...}, "1": {...} } }
+        if (json.entries && !Array.isArray(json.entries)) {
+            entries = Object.values(json.entries);
+        } 
+        // 情况B: 数组格式 { "entries": [...] }
+        else if (Array.isArray(json.entries)) {
+            entries = json.entries;
+        }
+        // 情况C: 纯数组 [...]
+        else if (Array.isArray(json)) {
+            entries = json;
         }
 
-        entries.forEach(entry => {
-            // 我们用 entry.comment (备注) 作为样式名
-            // 用 entry.content (内容) 作为样式模板
-            if (entry.content && entry.content.trim() !== "") {
-                newStyles.push({
-                    name: entry.comment || "未命名样式", 
-                    content: entry.content
-                });
+        // 提取有效数据
+        const cleanEntries = [];
+        entries.forEach(e => {
+            // comment 是条目名，content 是内容
+            // 有时候酒馆用 key 做名字，我们优先用 comment，没有就用 key[0]
+            const name = e.comment || (Array.isArray(e.key) ? e.key[0] : e.key) || "未命名条目";
+            const content = e.content || "";
+            
+            // 只导入非禁用的、有内容的
+            if (!e.disable && content.trim()) {
+                cleanEntries.push({ name, content });
             }
         });
 
-        if (newStyles.length > 0) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(newStyles));
-            renderSelector();
-            alert(`✅ 成功导入 ${newStyles.length} 个小剧场样式！\n已永久保存。`);
-        } else {
-            alert("❌ 未找到有效的样式内容，请检查文件。");
+        if (cleanEntries.length === 0) {
+            alert("❌ 这本书里没有有效的条目！(请检查是否禁用了条目)");
+            return;
         }
+
+        // 存入库
+        const lib = getLibrary();
+        // 如果已存在同名书，先删除旧的
+        const bookName = file.name.replace('.json', '');
+        const newLib = lib.filter(b => b.bookName !== bookName);
+        
+        newLib.push({
+            bookName: bookName,
+            entries: cleanEntries
+        });
+        
+        saveLibrary(newLib);
+        alert(`✅ 成功导入世界书：《${bookName}》\n📚 包含 ${cleanEntries.length} 个模板样式！`);
     }
 
-    // 3. 渲染下拉菜单
+    // 3. 渲染下拉菜单 (核心层级逻辑)
     function renderSelector() {
         const select = document.getElementById('style-select');
         if (!select) return;
 
-        const styles = getStyles();
-        // 默认第一项是“随机”
-        let html = `<option value="random">🎲 随机挑选一个样式 (默认)</option>`;
+        const lib = getLibrary();
+        
+        // 默认选项
+        let html = `<option value="random_all">🎲 全库随机抽取 (默认)</option>`;
 
-        if (styles.length === 0) {
-            html = `<option value="">(空) 请先点击上方导入世界书</option>`;
+        if (lib.length === 0) {
+            html = `<option value="">(空) 请先导入世界书 JSON</option>`;
         } else {
-            styles.forEach((s, idx) => {
-                html += `<option value="${idx}">🎨 ${s.name}</option>`;
+            // 遍历每一本书
+            lib.forEach((book, bookIdx) => {
+                // 使用 optgroup 分组，显示书名
+                html += `<optgroup label="📚 ${book.bookName}">`;
+                // 遍历书里的条目
+                book.entries.forEach((entry, entryIdx) => {
+                    // value 格式： "bookIndex_entryIndex"
+                    html += `<option value="${bookIdx}_${entryIdx}">└─ ${entry.name}</option>`;
+                });
+                html += `</optgroup>`;
             });
         }
         select.innerHTML = html;
     }
 
-    // 4. 构建界面
+    function updateBookStatus() {
+        const lib = getLibrary();
+        const el = document.getElementById('book-info-text');
+        if(el) el.innerText = `当前已导入 ${lib.length} 本世界书，共 ${lib.reduce((a,b)=>a+b.entries.length, 0)} 个样式`;
+    }
+
+    // 4. 界面渲染
     function renderUI() {
         if (document.getElementById(BTN_ID)) return;
 
-        // 悬浮球
         const btn = document.createElement('div');
-        btn.id = BTN_ID;
-        btn.innerHTML = '🎨';
-        btn.title = "小剧场样式引擎";
+        btn.id = BTN_ID; btn.innerHTML = '📚'; btn.title = "小剧场世界书";
         document.body.appendChild(btn);
 
-        // 主窗口
         const box = document.createElement('div');
         box.id = BOX_ID;
         box.innerHTML = `
-            <div class="header-bar" id="drag-header">
-                <span>🎬 军师 (样式随机版)</span>
+            <div class="header-bar" id="drag-header-v11">
+                <span>🎬 军师 (世界书引擎)</span>
                 <span style="cursor:pointer;" onclick="document.getElementById('${BOX_ID}').style.display='none'">×</span>
             </div>
             
-            <div class="import-section">
-                <span style="font-size:11px; color:#aaa;">样式库管理</span>
-                <input type="file" id="wb-upload" accept=".json" style="display:none;">
-                <button class="file-btn" onclick="document.getElementById('wb-upload').click()">📂 导入世界书文件</button>
+            <div class="book-shelf">
+                <input type="file" id="wb-file-input" accept=".json" style="display:none;">
+                <button class="import-btn" onclick="document.getElementById('wb-file-input').click()">
+                    <span>📥</span> 导入世界书文件 (.json)
+                </button>
+                <div id="book-info-text" class="current-book-info">暂无数据</div>
             </div>
 
             <div id="advisorChat">
                 <div class="advisor-bubble" style="background:#fff7d1; border-color:#ffeaa7; color:#d35400;">
-                    <b>👋 欢迎主公！</b><br>
-                    请导入包含“小剧场样式”的世界书 JSON。<br>
-                    我会<b>随机抽取</b>或<b>指定使用</b>其中的样式来生成内容。
+                    <b>👋 欢迎使用！</b><br>
+                    请导入您珍藏的小剧场世界书 JSON。<br>
+                    我会读取其中的<b>【条目名】</b>作为分类，<b>【内容】</b>作为排版格式。
                 </div>
             </div>
 
             <div class="footer-area">
-                <div style="font-size:11px; color:#aaa; margin-bottom:2px;">选择样式 (不选则随机):</div>
+                <div style="font-size:11px; color:#aaa; margin-bottom:2px;">选择模板样式:</div>
                 <select id="style-select"></select>
 
                 <div class="input-group">
-                    <input type="text" id="reqInput" placeholder="输入剧情要求 (例: 吐槽役)...">
+                    <input type="text" id="reqInput" placeholder="剧情要求 (不填则自由发挥)...">
                     <button id="sendBtn">生成</button>
                 </div>
                 <button class="fav-btn" id="btn-view-favs">⭐ 查看生成历史</button>
             </div>
         `;
         document.body.appendChild(box);
+        
         renderSelector();
+        updateBookStatus();
 
-        // === 事件处理 ===
-
-        // 1. 文件上传
-        document.getElementById('wb-upload').addEventListener('change', function(e) {
+        // === 事件绑定 ===
+        
+        // 1. 导入
+        document.getElementById('wb-file-input').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = function(ev) {
                 try {
                     const json = JSON.parse(ev.target.result);
-                    importWorldBook(json);
-                } catch(err) {
-                    alert("❌ 文件解析失败: " + err);
-                }
+                    parseAndImport(file, json);
+                } catch(err) { alert("JSON解析错误: " + err); }
             };
             reader.readAsText(file);
             this.value = '';
         });
 
-        // 2. 生成逻辑 (核心)
+        // 2. 生成 (核心逻辑)
         document.getElementById('sendBtn').onclick = async function() {
-            const styles = getStyles();
-            if (styles.length === 0) { alert("⚠️ 请先导入样式文件！"); return; }
+            const lib = getLibrary();
+            if (lib.length === 0) { alert("请先导入世界书！"); return; }
 
-            const selectVal = document.getElementById('style-select').value;
+            const val = document.getElementById('style-select').value;
             const req = document.getElementById('reqInput').value;
             const chat = document.getElementById('advisorChat');
             const btn = document.getElementById('sendBtn');
 
             if (!window.SillyTavern) { alert("酒馆未连接"); return; }
 
+            let targetStyle = null;
+
             // === 🎲 抽取逻辑 ===
-            let selectedStyle;
-            if (selectVal === "random") {
-                // 随机抽取一个
-                const randIdx = Math.floor(Math.random() * styles.length);
-                selectedStyle = styles[randIdx];
-                chat.innerHTML += `<div class="temp-msg" style="font-size:10px;text-align:center;color:#aaa;">🎲 正在随机抽取... 命中样式：【${selectedStyle.name}】</div>`;
+            if (val === "random_all") {
+                // 1. 先随机选一本书
+                const randBook = lib[Math.floor(Math.random() * lib.length)];
+                // 2. 再随机选一个条目
+                const randEntry = randBook.entries[Math.floor(Math.random() * randBook.entries.length)];
+                targetStyle = { name: `[随机] ${randEntry.name}`, content: randEntry.content };
             } else {
-                // 指定样式
-                selectedStyle = styles[parseInt(selectVal)];
-                chat.innerHTML += `<div class="temp-msg" style="font-size:10px;text-align:center;color:#aaa;">🎯 使用指定样式：【${selectedStyle.name}】</div>`;
+                // 指定选择 "bookIndex_entryIndex"
+                const [bIdx, eIdx] = val.split('_').map(Number);
+                targetStyle = lib[bIdx].entries[eIdx];
             }
 
             btn.innerText = "⏳"; btn.disabled = true;
+            chat.innerHTML += `<div class="loading-tip" style="font-size:10px;text-align:center;color:#aaa;">🎥 正在应用样式：${targetStyle.name}...</div>`;
+            chat.scrollTop = chat.scrollHeight;
 
             try {
                 const context = SillyTavern.getContext();
                 const charName = context.characters[context.characterId].name;
                 const lastMes = context.chat.length > 0 ? context.chat[context.chat.length - 1].mes : "无";
 
-                // === 🧠 Prompt 构建 ===
-                // 告诉 AI：必须完全按照 selectedStyle.content 给出的格式来写
                 const prompt = `
-                [Instruction: Generate a "Little Theater" scene.]
+                [Instruction: Generate a specialized scene.]
                 
-                [IMPORTANT: OUTPUT FORMAT RULE]
-                You MUST follow the specific format/style template below exactly. Do not change the HTML structure or visual style provided.
+                [STRICT FORMAT REQUIREMENT]
+                You MUST strictly follow the format/style template below. Do not output raw markdown if the template uses HTML tags.
                 
-                === STYLE TEMPLATE START ===
-                ${selectedStyle.content}
-                === STYLE TEMPLATE END ===
+                === TEMPLATE START ===
+                ${targetStyle.content}
+                === TEMPLATE END ===
                 
-                [Content Requirements]:
+                [Context Info]:
                 Character: ${charName}
-                Context: "${lastMes}"
+                Story Context: "${lastMes}"
                 User Request: "${req}"
                 
-                Generate the content now, filling in the template above with the story.
+                Fill the template with creative content now.
                 `;
 
-                const result = await SillyTavern.generateRaw(prompt, "junshi_style_engine");
+                const result = await SillyTavern.generateRaw(prompt, "junshi_wb_engine");
                 
-                // 清理提示信息
-                document.querySelectorAll('.temp-msg').forEach(e => e.remove());
+                document.querySelectorAll('.loading-tip').forEach(e=>e.remove());
 
                 const html = `
                     <div class="advisor-bubble">
-                        <div style="font-size:10px; color:#74b9ff; margin-bottom:5px;">
-                            🎨 样式: ${selectedStyle.name}
-                        </div>
-                        <div style="border-top:1px dashed #eee; padding-top:5px;">
-                            ${result} 
+                        <div style="font-size:10px; color:#74b9ff; margin-bottom:5px;">🎨 ${targetStyle.name}</div>
+                        <div style="border-top:1px dashed #b2ebf2; padding-top:5px;">
+                            ${result}
                         </div>
                         <div style="margin-top:8px;">
-                            <button class="fav-btn" onclick="saveFav(this, '${selectedStyle.name}')">❤️ 收藏</button>
+                            <button class="fav-btn" onclick="saveFav(this, '${targetStyle.name}')">❤️ 收藏</button>
                         </div>
                     </div>
                 `;
@@ -296,35 +339,20 @@
             }
         };
 
-        // 3. 拖拽与开关
-        btn.onclick = () => {
-            const b = document.getElementById(BOX_ID);
-            b.style.display = (b.style.display === 'flex') ? 'none' : 'flex';
-        };
-
-        const head = document.getElementById('drag-header');
+        // 3. 拖拽/开关/收藏 (标准配置)
+        btn.onclick = () => { const b=document.getElementById(BOX_ID); b.style.display=(b.style.display==='flex'?'none':'flex'); };
+        
+        const h = document.getElementById('drag-header-v11');
         let isD=false, sX, sY, iL, iT;
-        head.addEventListener('mousedown', e => {
-             if(e.target === head || e.target.tagName === 'SPAN') {
-                 isD=true; sX=e.clientX; sY=e.clientY;
-                 const r=document.getElementById(BOX_ID).getBoundingClientRect();
-                 iL=r.left; iT=r.top;
-             }
-        });
-        window.addEventListener('mousemove', e => {
-            if(!isD) return; e.preventDefault();
-            const b = document.getElementById(BOX_ID);
-            b.style.left = (iL + e.clientX - sX) + 'px';
-            b.style.top = (iT + e.clientY - sY) + 'px';
-        });
-        window.addEventListener('mouseup', () => isD=false);
+        h.addEventListener('mousedown', e=>{ if(e.target===h||e.target.tagName==='SPAN'){isD=true;sX=e.clientX;sY=e.clientY;const r=document.getElementById(BOX_ID).getBoundingClientRect();iL=r.left;iT=r.top;} });
+        window.addEventListener('mousemove', e=>{ if(!isD)return; e.preventDefault(); const b=document.getElementById(BOX_ID); b.style.left=(iL+e.clientX-sX)+'px'; b.style.top=(iT+e.clientY-sY)+'px'; });
+        window.addEventListener('mouseup', ()=>isD=false);
 
-        // 4. 收藏夹
         document.getElementById('btn-view-favs').onclick = function() {
             const favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
             let h = `<div class="advisor-bubble" style="background:#e1f5fe;"><b>⭐ 历史记录 (${favs.length})</b></div>`;
             favs.forEach((f, i) => {
-                h += `<div class="advisor-bubble" style="border-left:3px solid #fab1a0;">
+                h += `<div class="advisor-bubble" style="border-left:3px solid #ff7675;">
                     <div style="font-size:10px;color:#999;">${f.style} | ${f.date} <span style="float:right;cursor:pointer;color:red;" onclick="delFav(${i})">🗑️</span></div>
                     <div style="max-height:100px;overflow-y:auto;margin-top:5px;">${f.content}</div>
                 </div>`;
@@ -334,13 +362,9 @@
         };
     }
 
-    // 全局函数
-    window.saveFav = function(btn, styleName) {
-        // 获取生成的 HTML 内容
-        const contentDiv = btn.parentElement.previousElementSibling;
-        const content = contentDiv.innerHTML; 
-        const item = { style: styleName, content, date: new Date().toLocaleString() };
-        
+    window.saveFav = function(btn, style) {
+        const content = btn.parentElement.previousElementSibling.innerHTML;
+        const item = { style, content, date: new Date().toLocaleString() };
         let favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
         favs.unshift(item);
         localStorage.setItem(FAV_KEY, JSON.stringify(favs));
@@ -354,7 +378,6 @@
         document.getElementById('btn-view-favs').click();
     };
 
-    // 保活
     setInterval(() => { if(!document.getElementById(BTN_ID)) renderUI(); }, 1000);
     renderUI();
 
