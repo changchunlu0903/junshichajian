@@ -1,8 +1,9 @@
 {
-    "name": "测试插件",
-    "version": "1.0.0",
-    "author": "Test",
-    "description": "测试",
+    "name": "军师小剧场 (最终修复版)",
+    "version": "3.0.0",
+    "author": "Lili",
+    "description": "集沉浸模式、小剧场生成、收藏夹于一体的军师插件。",
     "repo": "https://github.com/changchunlu0903/junshichajian",
+    "css": "style.css",
     "js": "index.js"
 }
