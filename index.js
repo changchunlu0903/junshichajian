@@ -1,318 +1,361 @@
 // =============================================================
-//  军师小剧场 V6.0 - 百宝箱复刻版 (蓝+奶黄配色)
+//  军师小剧场 V10.0 - 样式随机 & 世界书排版引擎
+//  核心：导入世界书作为样式库，支持指定样式或随机抽取
 // =============================================================
 
 (function() {
-    console.log("🚀 军师插件 V6.0 (百宝箱复刻UI) 已注入...");
+    console.log("🚀 军师插件 V10.0 (样式引擎) 正在启动...");
 
-    // 使用百宝箱的 ID 命名，确保样式完全对应
-    const BOX_ID = 'aiAdvisorBox'; 
-    const HEADER_ID = 'advisorHeader';
-
-    // 1. 注入 CSS (完全照搬你的 CSS，只改颜色)
-    // 🎨 配色方案：
-    // 主色 (Blue): #74b9ff (天空蓝) / #0984e3 (深蓝文字)
-    // 副色 (Milk Yellow): #fffdf0 (奶黄背景) / #ffeaa7 (奶黄边框) / #fff7d1 (按钮)
+    const BOX_ID = 'aiAdvisorBox_v10';
+    const BTN_ID = 'st-entry-btn-v10';
     
+    // 本地存储 Key
+    const STORAGE_KEY = 'st_junshi_styles_v10';
+    const FAV_KEY = 'st_junshi_favs_v10';
+
+    // 1. 注入 CSS (蓝黄高颜值 + 强制置顶)
     const style = document.createElement('style');
     style.innerHTML = `
-        /* === 悬浮球 (保持蓝色荧光风格) === */
-        #st-entry-btn {
-            position: fixed;
-            bottom: 120px; right: 20px;
-            width: 45px; height: 45px;
-            background: #fff;
-            border: 3px solid #74b9ff;
-            border-radius: 50%;
-            color: #74b9ff;
-            display: flex; justify-content: center; align-items: center;
-            font-size: 22px; cursor: pointer;
-            z-index: 12000;
-            box-shadow: 0 5px 15px rgba(116, 185, 255, 0.4);
-            transition: 0.3s;
-            user-select: none;
+        /* 悬浮球 - 强制最高层级 */
+        #${BTN_ID} {
+            position: fixed !important; bottom: 120px !important; right: 20px !important;
+            width: 50px; height: 50px; background: #fff;
+            border: 3px solid #74b9ff; border-radius: 50%;
+            color: #74b9ff; display: flex; justify-content: center; align-items: center;
+            font-size: 24px; cursor: pointer; z-index: 2147483647 !important;
+            box-shadow: 0 5px 15px rgba(116, 185, 255, 0.5);
+            transition: transform 0.2s; user-select: none;
         }
-        #st-entry-btn:hover { transform: scale(1.1) rotate(15deg); background: #74b9ff; color: white; }
+        #${BTN_ID}:hover { transform: scale(1.1); background: #74b9ff; color: white; }
 
-        /* ================= 🔧 军师窗口：百宝箱复刻版 ================= */
-
-        /* 1. 外壳：自由缩放 + 蓝白配色 */
+        /* 主窗口 */
         #${BOX_ID} {
-            position: fixed;
-            bottom: 100px; left: 20px;
-            z-index: 12001;
-
-            /* 📏 尺寸设置 */
-            width: 320px; height: 420px; 
-            min-width: 260px; min-height: 300px;
-            max-width: 95vw; max-height: 85vh;
-
-            /* 🔥 开启自由缩放 */
-            resize: both !important;
-            overflow: hidden !important; 
-
-            /* 🎨 配色：蓝色边框 */
-            background: #fff;
-            border: 3px solid #74b9ff; 
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            
-            display: none; /* 默认隐藏 */
-            flex-direction: column;
-            font-family: "Microsoft YaHei", sans-serif;
+            position: fixed !important; bottom: 100px; left: 20px; z-index: 2147483647 !important;
+            width: 340px; height: 550px; min-width: 280px; min-height: 400px;
+            background: #fff; border: 3px solid #74b9ff; border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            display: none; flex-direction: column; font-family: "Microsoft YaHei", sans-serif;
+            resize: both; overflow: hidden;
         }
 
-        /* 2. 标题栏：蓝色背景 + 拖动光标 */
-        #${HEADER_ID} {
-            background: #74b9ff !important; 
-            color: white;
-            padding: 10px 15px;
-            font-weight: bold;
-            font-size: 14px;
-            display: flex; justify-content: space-between; align-items: center;
-            
-            /* 🔥 拖动功能的关键 */
-            cursor: move;
-            user-select: none;
-            touch-action: none; 
+        /* 标题栏 */
+        .header-bar {
+            background: #74b9ff; color: white; padding: 10px 15px;
+            font-weight: bold; font-size: 14px; cursor: move;
+            display: flex; justify-content: space-between; align-items: center; user-select: none;
         }
 
-        /* 3. 工具栏：奶黄色背景 */
-        .advisor-toolbar {
-            display: flex; gap: 5px; padding: 5px 10px;
-            background: #fffdf0; /* 奶白 */
-            border-bottom: 1px solid #ffeaa7; /* 奶黄线 */
+        /* 导入区 */
+        .import-section {
+            background: #fffbf0; padding: 8px; border-bottom: 1px solid #ffeaa7;
+            display: flex; align-items: center; justify-content: space-between;
         }
-        .advisor-tool-btn {
-            flex: 1; padding: 4px; border-radius: 4px;
-            font-size: 11px; font-weight: bold; cursor: pointer; 
-            background: #fff; 
-            border: 1px solid #ffeaa7; /* 奶黄边框 */
-            color: #e67e22; /* 暖橙色文字 */
-            transition: 0.2s;
-        }
-        .advisor-tool-btn:hover {
-            background: #fff7d1;
-            color: #d35400;
+        .file-btn {
+            background: #fab1a0; color: white; border: none; border-radius: 5px;
+            padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight:bold;
         }
 
-        /* 4. 聊天区：浅奶黄氛围 */
+        /* 聊天显示区 */
         #advisorChat {
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 10px;
-            background: #fffbf0; /* 极淡的奶黄底色 */
-            overscroll-behavior: contain;
+            flex: 1; overflow-y: auto; padding: 10px; background: #fffbf0;
         }
-
-        /* 5. 气泡：白底 + 浅蓝边框 */
         .advisor-bubble {
-            background: #fff; 
-            border: 1px solid #b2ebf2; /* 浅蓝边 */
-            border-radius: 12px; 
-            padding: 12px; 
-            margin-bottom: 10px; 
+            background: #fff; border: 1px solid #b2ebf2; border-radius: 12px;
+            padding: 10px; margin-bottom: 10px; font-size: 13px; color: #555;
             box-shadow: 0 2px 5px rgba(0,0,0,0.03);
-            font-size: 13px; 
-            line-height: 1.5;
-            color: #555;
-            position: relative;
         }
 
-        /* 6. 交互按钮：浅蓝底 + 蓝色虚线边框 */
-        .advisor-action-btn {
-            display: block; width: 100%;
-            margin-top: 8px; padding: 6px;
-            background: #e1f5fe; /* 浅蓝背景 */
-            color: #0288d1; /* 深蓝字 */
-            border: 1px dashed #29b6f6; 
-            border-radius: 6px;
-            cursor: pointer; 
-            font-size: 12px; font-weight: bold;
-            text-align: center; 
-            transition: 0.2s;
-        }
-        .advisor-action-btn:hover { 
-            background: #b3e5fc; 
-        }
-
-        /* 7. 底部输入框区域 */
-        .advisor-footer {
-            padding: 8px; background: #fff; border-top: 1px solid #eee; display: flex; gap: 5px;
-        }
-        #advisorInput {
-            flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 5px 12px;
-            font-size: 12px !important; outline: none; background: #fafafa;
-        }
-        #advisorSend {
-            background: #74b9ff; color: white; border: none; border-radius: 20px;
-            padding: 0 15px; cursor: pointer; font-weight: bold;
-        }
-
-        /* --- 折叠模式 (只剩标题栏) --- */
-        #${BOX_ID}.collapsed {
-            height: 45px !important;       /* 强制高度只剩标题栏 */
-            min-height: 0 !important;      /* 解除最小高度限制 */
-            resize: none !important;       /* 折叠时不准拉伸 */
-            overflow: hidden !important;   /* 藏起多余内容 */
-        }
-        /* 折叠时，隐藏除标题栏以外的所有子元素 */
-        #${BOX_ID}.collapsed > *:not(#${HEADER_ID}) {
-            display: none !important;
+        /* 底部控制区 */
+        .footer-area {
+            padding: 10px; background: #fff; border-top: 1px solid #eee;
+            display: flex; flex-direction: column; gap: 8px;
         }
         
-        /* 沉浸模式样式 */
-        body.junshi-immersive #top-bar { display: none !important; }
-        body.junshi-immersive #content { height: 100vh !important; max-height: 100vh !important; }
+        #style-select {
+            width: 100%; padding: 8px; border: 2px solid #74b9ff; border-radius: 8px;
+            background: #f0f9ff; color: #0984e3; font-size: 12px; font-weight: bold; outline: none;
+        }
+
+        .input-group { display: flex; gap: 5px; }
+        #reqInput {
+            flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 6px 12px;
+            font-size: 12px; outline: none; background: #fafafa;
+        }
+        #sendBtn {
+            background: #74b9ff; color: white; border: none; border-radius: 20px;
+            padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 12px;
+        }
+        
+        .fav-btn {
+            background: #fff7d1; border: 1px solid #ffeaa7; color: #d35400;
+            border-radius: 12px; padding: 5px; font-size: 11px; cursor: pointer; width: 100%;
+        }
     `;
     document.head.appendChild(style);
 
-    // 2. 渲染 UI (完全照搬结构)
-    function renderUI() {
-        if (document.getElementById(BOX_ID)) return;
+    // 2. 数据管理逻辑
+    function getStyles() {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    }
+    
+    // 解析世界书 JSON，提取 entries 作为样式
+    function importWorldBook(json) {
+        let newStyles = [];
+        
+        // 兼容两种格式：直接是 entries 数组，或者是包含 entries 的对象
+        let entries = Array.isArray(json) ? json : (json.entries ? json.entries : []);
 
-        // 悬浮入口球
+        if (entries.length === 0) {
+            alert("❌ 这个JSON文件里没有内容 (entries为空)！");
+            return;
+        }
+
+        entries.forEach(entry => {
+            // 我们用 entry.comment (备注) 作为样式名
+            // 用 entry.content (内容) 作为样式模板
+            if (entry.content && entry.content.trim() !== "") {
+                newStyles.push({
+                    name: entry.comment || "未命名样式", 
+                    content: entry.content
+                });
+            }
+        });
+
+        if (newStyles.length > 0) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(newStyles));
+            renderSelector();
+            alert(`✅ 成功导入 ${newStyles.length} 个小剧场样式！\n已永久保存。`);
+        } else {
+            alert("❌ 未找到有效的样式内容，请检查文件。");
+        }
+    }
+
+    // 3. 渲染下拉菜单
+    function renderSelector() {
+        const select = document.getElementById('style-select');
+        if (!select) return;
+
+        const styles = getStyles();
+        // 默认第一项是“随机”
+        let html = `<option value="random">🎲 随机挑选一个样式 (默认)</option>`;
+
+        if (styles.length === 0) {
+            html = `<option value="">(空) 请先点击上方导入世界书</option>`;
+        } else {
+            styles.forEach((s, idx) => {
+                html += `<option value="${idx}">🎨 ${s.name}</option>`;
+            });
+        }
+        select.innerHTML = html;
+    }
+
+    // 4. 构建界面
+    function renderUI() {
+        if (document.getElementById(BTN_ID)) return;
+
+        // 悬浮球
         const btn = document.createElement('div');
-        btn.id = 'st-entry-btn';
-        btn.innerHTML = '📜';
-        btn.title = "点击召唤军师";
+        btn.id = BTN_ID;
+        btn.innerHTML = '🎨';
+        btn.title = "小剧场样式引擎";
         document.body.appendChild(btn);
 
-        // 军师窗口
+        // 主窗口
         const box = document.createElement('div');
         box.id = BOX_ID;
         box.innerHTML = `
-            <div id="${HEADER_ID}">
-                <span>🤖 军师锦囊</span>
-                <span style="flex:1; cursor:move; display:flex; align-items:center; justify-content:flex-end; gap:10px; user-select:none;">
-                    <span id="st-collapse-btn" style="cursor:pointer; padding:2px 8px; background:rgba(255,255,255,0.2); border-radius:10px; font-size:12px;" title="折叠/展开">▼</span>
-                    <span id="st-close-btn" style="cursor:pointer; font-size:18px;" title="隐藏">×</span>
-                </span>
+            <div class="header-bar" id="drag-header">
+                <span>🎬 军师 (样式随机版)</span>
+                <span style="cursor:pointer;" onclick="document.getElementById('${BOX_ID}').style.display='none'">×</span>
             </div>
-
-            <div class="advisor-toolbar">
-                <button class="advisor-tool-btn" id="btn-immersive">🔲 沉浸模式</button>
-                <button class="advisor-tool-btn" id="btn-favs">⭐ 收藏夹</button>
+            
+            <div class="import-section">
+                <span style="font-size:11px; color:#aaa;">样式库管理</span>
+                <input type="file" id="wb-upload" accept=".json" style="display:none;">
+                <button class="file-btn" onclick="document.getElementById('wb-upload').click()">📂 导入世界书文件</button>
             </div>
 
             <div id="advisorChat">
                 <div class="advisor-bubble" style="background:#fff7d1; border-color:#ffeaa7; color:#d35400;">
-                    👋 主公好！我是您的军师。<br>在下方输入要求，我为您生成小剧场。
+                    <b>👋 欢迎主公！</b><br>
+                    请导入包含“小剧场样式”的世界书 JSON。<br>
+                    我会<b>随机抽取</b>或<b>指定使用</b>其中的样式来生成内容。
                 </div>
             </div>
 
-            <div class="advisor-footer">
-                <input type="text" id="advisorInput" placeholder="输入小剧场要求 (例: 甜一点)...">
-                <button id="advisorSend">发送</button>
+            <div class="footer-area">
+                <div style="font-size:11px; color:#aaa; margin-bottom:2px;">选择样式 (不选则随机):</div>
+                <select id="style-select"></select>
+
+                <div class="input-group">
+                    <input type="text" id="reqInput" placeholder="输入剧情要求 (例: 吐槽役)...">
+                    <button id="sendBtn">生成</button>
+                </div>
+                <button class="fav-btn" id="btn-view-favs">⭐ 查看生成历史</button>
             </div>
         `;
         document.body.appendChild(box);
+        renderSelector();
 
-        // === 绑定事件 ===
+        // === 事件处理 ===
 
-        // 1. 悬浮球开关
-        btn.onclick = () => {
-            box.style.display = (box.style.display === 'flex') ? 'none' : 'flex';
-        };
-
-        // 2. 关闭与折叠
-        document.getElementById('st-close-btn').onclick = (e) => {
-            e.stopPropagation(); // 防止触发拖拽
-            box.style.display = 'none';
-        };
-        
-        document.getElementById('st-collapse-btn').onclick = (e) => {
-            e.stopPropagation();
-            box.classList.toggle('collapsed');
-            e.target.innerText = box.classList.contains('collapsed') ? '▲' : '▼';
-        };
-
-        // 3. 拖拽逻辑 (完美复刻百宝箱)
-        const header = document.getElementById(HEADER_ID);
-        let isDragging = false, startX, startY, initialLeft, initialTop;
-
-        header.addEventListener('mousedown', (e) => {
-            if(e.target.id !== HEADER_ID && e.target.tagName !== 'SPAN') return; // 避免误触按钮
-            isDragging = true;
-            startX = e.clientX; startY = e.clientY;
-            const rect = box.getBoundingClientRect();
-            initialLeft = rect.left; initialTop = rect.top;
-            box.style.bottom = 'auto'; box.style.right = 'auto'; // 解除定位锁定
+        // 1. 文件上传
+        document.getElementById('wb-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                try {
+                    const json = JSON.parse(ev.target.result);
+                    importWorldBook(json);
+                } catch(err) {
+                    alert("❌ 文件解析失败: " + err);
+                }
+            };
+            reader.readAsText(file);
+            this.value = '';
         });
 
-        window.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            box.style.left = `${initialLeft + dx}px`;
-            box.style.top = `${initialTop + dy}px`;
-        });
+        // 2. 生成逻辑 (核心)
+        document.getElementById('sendBtn').onclick = async function() {
+            const styles = getStyles();
+            if (styles.length === 0) { alert("⚠️ 请先导入样式文件！"); return; }
 
-        window.addEventListener('mouseup', () => isDragging = false);
-
-        // 4. 功能按钮
-        document.getElementById('btn-immersive').onclick = () => {
-            document.body.classList.toggle('junshi-immersive');
-            if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
-            else document.exitFullscreen().catch(()=>{});
-        };
-
-        document.getElementById('btn-favs').onclick = () => {
-            alert("📦 收藏夹功能正在装修中...\n(生成结果可以手动复制保存哦)");
-        };
-
-        // 5. 生成逻辑
-        const handleSend = async () => {
-            const input = document.getElementById('advisorInput');
-            const val = input.value.trim();
+            const selectVal = document.getElementById('style-select').value;
+            const req = document.getElementById('reqInput').value;
             const chat = document.getElementById('advisorChat');
-            
-            if(!val) return;
+            const btn = document.getElementById('sendBtn');
 
-            // 用户气泡
-            chat.innerHTML += `<div style="text-align:right; margin:5px 0;"><span style="background:#e1f5fe; color:#0288d1; padding:8px 12px; border-radius:15px; font-size:12px; display:inline-block;">${val}</span></div>`;
-            input.value = '';
-            chat.scrollTop = chat.scrollHeight;
+            if (!window.SillyTavern) { alert("酒馆未连接"); return; }
 
-            // 系统生成中
-            const loadingId = 'loading-' + Date.now();
-            chat.insertAdjacentHTML('beforeend', `<div id="${loadingId}" style="font-size:10px; color:#999; text-align:center; margin:5px;">⏳ 军师思考中...</div>`);
+            // === 🎲 抽取逻辑 ===
+            let selectedStyle;
+            if (selectVal === "random") {
+                // 随机抽取一个
+                const randIdx = Math.floor(Math.random() * styles.length);
+                selectedStyle = styles[randIdx];
+                chat.innerHTML += `<div class="temp-msg" style="font-size:10px;text-align:center;color:#aaa;">🎲 正在随机抽取... 命中样式：【${selectedStyle.name}】</div>`;
+            } else {
+                // 指定样式
+                selectedStyle = styles[parseInt(selectVal)];
+                chat.innerHTML += `<div class="temp-msg" style="font-size:10px;text-align:center;color:#aaa;">🎯 使用指定样式：【${selectedStyle.name}】</div>`;
+            }
+
+            btn.innerText = "⏳"; btn.disabled = true;
 
             try {
-                if (!window.SillyTavern) throw new Error("酒馆核心未加载");
                 const context = SillyTavern.getContext();
                 const charName = context.characters[context.characterId].name;
                 const lastMes = context.chat.length > 0 ? context.chat[context.chat.length - 1].mes : "无";
 
-                const prompt = `[Write a scene for ${charName}. User Request: ${val}. Last Context: ${lastMes}]`;
-                const result = await SillyTavern.generateRaw(prompt, "junshi_v6");
-
-                document.getElementById(loadingId).remove();
+                // === 🧠 Prompt 构建 ===
+                // 告诉 AI：必须完全按照 selectedStyle.content 给出的格式来写
+                const prompt = `
+                [Instruction: Generate a "Little Theater" scene.]
                 
-                // 军师气泡 (带复制按钮)
-                const resultHTML = `
+                [IMPORTANT: OUTPUT FORMAT RULE]
+                You MUST follow the specific format/style template below exactly. Do not change the HTML structure or visual style provided.
+                
+                === STYLE TEMPLATE START ===
+                ${selectedStyle.content}
+                === STYLE TEMPLATE END ===
+                
+                [Content Requirements]:
+                Character: ${charName}
+                Context: "${lastMes}"
+                User Request: "${req}"
+                
+                Generate the content now, filling in the template above with the story.
+                `;
+
+                const result = await SillyTavern.generateRaw(prompt, "junshi_style_engine");
+                
+                // 清理提示信息
+                document.querySelectorAll('.temp-msg').forEach(e => e.remove());
+
+                const html = `
                     <div class="advisor-bubble">
-                        <div style="font-weight:bold; color:#74b9ff; margin-bottom:5px;">🎬 小剧场生成:</div>
-                        ${result.replace(/\n/g, '<br>')}
-                        <button class="advisor-action-btn" onclick="navigator.clipboard.writeText(this.previousSibling.textContent); alert('已复制')">📋 复制内容</button>
+                        <div style="font-size:10px; color:#74b9ff; margin-bottom:5px;">
+                            🎨 样式: ${selectedStyle.name}
+                        </div>
+                        <div style="border-top:1px dashed #eee; padding-top:5px;">
+                            ${result} 
+                        </div>
+                        <div style="margin-top:8px;">
+                            <button class="fav-btn" onclick="saveFav(this, '${selectedStyle.name}')">❤️ 收藏</button>
+                        </div>
                     </div>
                 `;
-                chat.insertAdjacentHTML('beforeend', resultHTML);
+                chat.innerHTML += html;
                 chat.scrollTop = chat.scrollHeight;
 
-            } catch (e) {
-                document.getElementById(loadingId).remove();
-                chat.insertAdjacentHTML('beforeend', `<div class="advisor-bubble" style="color:red;">❌ 生成失败: ${e.message}</div>`);
+            } catch(e) {
+                chat.innerHTML += `<div style="color:red;font-size:12px;">❌ 失败: ${e}</div>`;
+            } finally {
+                btn.innerText = "生成"; btn.disabled = false;
             }
         };
 
-        document.getElementById('advisorSend').onclick = handleSend;
-        document.getElementById('advisorInput').onkeydown = (e) => { if(e.key === 'Enter') handleSend(); };
+        // 3. 拖拽与开关
+        btn.onclick = () => {
+            const b = document.getElementById(BOX_ID);
+            b.style.display = (b.style.display === 'flex') ? 'none' : 'flex';
+        };
+
+        const head = document.getElementById('drag-header');
+        let isD=false, sX, sY, iL, iT;
+        head.addEventListener('mousedown', e => {
+             if(e.target === head || e.target.tagName === 'SPAN') {
+                 isD=true; sX=e.clientX; sY=e.clientY;
+                 const r=document.getElementById(BOX_ID).getBoundingClientRect();
+                 iL=r.left; iT=r.top;
+             }
+        });
+        window.addEventListener('mousemove', e => {
+            if(!isD) return; e.preventDefault();
+            const b = document.getElementById(BOX_ID);
+            b.style.left = (iL + e.clientX - sX) + 'px';
+            b.style.top = (iT + e.clientY - sY) + 'px';
+        });
+        window.addEventListener('mouseup', () => isD=false);
+
+        // 4. 收藏夹
+        document.getElementById('btn-view-favs').onclick = function() {
+            const favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
+            let h = `<div class="advisor-bubble" style="background:#e1f5fe;"><b>⭐ 历史记录 (${favs.length})</b></div>`;
+            favs.forEach((f, i) => {
+                h += `<div class="advisor-bubble" style="border-left:3px solid #fab1a0;">
+                    <div style="font-size:10px;color:#999;">${f.style} | ${f.date} <span style="float:right;cursor:pointer;color:red;" onclick="delFav(${i})">🗑️</span></div>
+                    <div style="max-height:100px;overflow-y:auto;margin-top:5px;">${f.content}</div>
+                </div>`;
+            });
+            h += `<button class="fav-btn" onclick="document.getElementById('advisorChat').innerHTML=''">清屏</button>`;
+            document.getElementById('advisorChat').innerHTML = h;
+        };
     }
 
-    // 保活检查
-    setInterval(renderUI, 2000);
+    // 全局函数
+    window.saveFav = function(btn, styleName) {
+        // 获取生成的 HTML 内容
+        const contentDiv = btn.parentElement.previousElementSibling;
+        const content = contentDiv.innerHTML; 
+        const item = { style: styleName, content, date: new Date().toLocaleString() };
+        
+        let favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
+        favs.unshift(item);
+        localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+        btn.innerText = "✅"; btn.disabled = true;
+    };
+    window.delFav = function(idx) {
+        if(!confirm("删除?")) return;
+        let favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
+        favs.splice(idx, 1);
+        localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+        document.getElementById('btn-view-favs').click();
+    };
+
+    // 保活
+    setInterval(() => { if(!document.getElementById(BTN_ID)) renderUI(); }, 1000);
     renderUI();
 
 })();
