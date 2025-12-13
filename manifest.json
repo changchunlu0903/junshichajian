@@ -1,0 +1,9 @@
+{
+    "name": "军师小剧场 & 沉浸模式",
+    "version": "1.0.0",
+    "author": "YourName",
+    "description": "集成了沉浸式全屏、基于当前对话生成小剧场、以及小剧场收藏功能的综合插件。",
+    "repo": "https://github.com/changchunlu0903/junshichajian",
+    "css": "style.css",
+    "js": "index.js"
+}
