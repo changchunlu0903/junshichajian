@@ -1,384 +1,372 @@
 // =============================================================
-//  军师小剧场 V11.0 - 世界书原生读取版
-//  核心：完全适配酒馆 World Info 格式，支持书籍/条目层级显示
+//  军师小剧场 V12.0 - 终极融合版
+//  UI：完全复刻百宝箱 CSS (蓝黄配色 + 自由缩放 + 折叠)
+//  内核：世界书原生读取 + 随机/指定样式引擎
 // =============================================================
 
 (function() {
-    console.log("🚀 军师插件 V11.0 (世界书原生版) 已注入...");
+    console.log("🚀 军师插件 V12.0 (完全体) 已注入...");
 
-    const BOX_ID = 'aiAdvisorBox_v11';
-    const BTN_ID = 'st-entry-btn-v11';
-    
-    // 数据存储 Key
+    // ID 定义 (对应你的 CSS)
+    const BOX_ID = 'aiAdvisorBox'; 
+    const HEADER_ID = 'advisorHeader';
+    const BTN_ID = 'st-entry-btn-v12';
+
+    // 存储 Key
     const STORAGE_KEY = 'st_junshi_worldbooks_v11';
     const FAV_KEY = 'st_junshi_favs_v11';
 
-    // 1. 注入 CSS (保持蓝黄配色，优化下拉菜单显示)
+    // 1. 注入 CSS (基于你提供的代码，改为蓝黄配色)
     const style = document.createElement('style');
     style.innerHTML = `
-        /* 悬浮球 - 强制置顶 */
+        /* === 悬浮球 (强制置顶) === */
         #${BTN_ID} {
-            position: fixed !important; bottom: 120px !important; right: 20px !important;
-            width: 50px; height: 50px; background: #fff;
-            border: 3px solid #74b9ff; border-radius: 50%;
-            color: #74b9ff; display: flex; justify-content: center; align-items: center;
-            font-size: 24px; cursor: pointer; z-index: 2147483647 !important;
+            position: fixed !important; 
+            bottom: 120px !important; right: 20px !important;
+            width: 50px; height: 50px;
+            background: #fff;
+            border: 3px solid #74b9ff; /* 蓝框 */
+            border-radius: 50%;
+            color: #74b9ff;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 24px; cursor: pointer;
+            z-index: 2147483647 !important; /* 最高层级 */
             box-shadow: 0 5px 15px rgba(116, 185, 255, 0.5);
             transition: transform 0.2s; user-select: none;
         }
         #${BTN_ID}:hover { transform: scale(1.1); background: #74b9ff; color: white; }
 
-        /* 主窗口 */
+        /* ================= 🔧 军师窗口：复刻你的 CSS ================= */
+
+        /* 1. 外壳：自由缩放 + 蓝黄配色 */
         #${BOX_ID} {
-            position: fixed !important; bottom: 100px; left: 20px; z-index: 2147483647 !important;
-            width: 350px; height: 580px; min-width: 300px; min-height: 400px;
-            background: #fff; border: 3px solid #74b9ff; border-radius: 15px;
+            position: fixed !important;
+            bottom: 100px; left: 20px;
+            z-index: 2147483647 !important;
+
+            /* 📏 尺寸设置 */
+            width: 340px; height: 500px; 
+            min-width: 280px; min-height: 350px;
+            max-width: 95vw; max-height: 85vh;
+
+            /* 🔥 开启自由缩放 */
+            resize: both !important;
+            overflow: hidden !important; 
+
+            /* 🎨 配色：蓝色边框 */
+            background: #fff;
+            border: 3px solid #74b9ff; 
+            border-radius: 15px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            display: none; flex-direction: column; font-family: "Microsoft YaHei", sans-serif;
-            resize: both; overflow: hidden;
+            
+            display: none; flex-direction: column;
+            font-family: "Microsoft YaHei", sans-serif;
         }
 
-        /* 标题栏 */
-        .header-bar {
-            background: #74b9ff; color: white; padding: 10px 15px;
-            font-weight: bold; font-size: 14px; cursor: move;
-            display: flex; justify-content: space-between; align-items: center; user-select: none;
+        /* 2. 标题栏：蓝色背景 + 拖动光标 */
+        #${HEADER_ID} {
+            background: #74b9ff !important; 
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            font-size: 14px;
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: move; user-select: none; touch-action: none; 
         }
 
-        /* 书架管理区 */
-        .book-shelf {
-            background: #fffbf0; padding: 10px; border-bottom: 1px solid #ffeaa7;
+        /* 3. 工具栏：奶黄背景 */
+        .advisor-toolbar {
+            display: flex; gap: 5px; padding: 8px;
+            background: #fffbf0; /* 奶黄 */
+            border-bottom: 1px solid #ffeaa7;
+            align-items: center;
         }
-        .import-btn {
-            background: #00b894; color: white; border: none; border-radius: 5px;
-            padding: 5px 10px; font-size: 12px; cursor: pointer; width: 100%;
-            display: flex; align-items: center; justify-content: center; gap: 5px;
+        .advisor-tool-btn {
+            flex: 1; padding: 5px; border-radius: 4px;
+            font-size: 11px; font-weight: bold; cursor: pointer; 
+            background: #fff; border: 1px solid #ffeaa7; color: #e67e22;
+            display: flex; justify-content: center; align-items: center; gap: 4px;
         }
-        .current-book-info {
-            font-size: 11px; color: #d63031; margin-top: 5px; text-align: center;
-        }
+        .advisor-tool-btn:hover { background: #fff7d1; }
 
-        /* 聊天显示区 */
+        /* 4. 聊天区：浅奶黄氛围 */
         #advisorChat {
-            flex: 1; overflow-y: auto; padding: 10px; background: #fffbf0;
-        }
-        .advisor-bubble {
-            background: #fff; border: 1px solid #b2ebf2; border-radius: 12px;
-            padding: 10px; margin-bottom: 10px; font-size: 13px; color: #555;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+            flex: 1; overflow-y: auto; padding: 10px;
+            background: #fffdf5; 
+            overscroll-behavior: contain;
         }
 
-        /* 底部控制区 */
-        .footer-area {
+        /* 5. 气泡：白底 + 蓝边框 */
+        .advisor-bubble {
+            background: #fff; 
+            border: 1px solid #b2ebf2; 
+            border-radius: 12px; 
+            padding: 12px; 
+            margin-bottom: 10px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            font-size: 13px; line-height: 1.5; color: #555;
+            position: relative;
+        }
+
+        /* 6. 交互按钮 */
+        .advisor-action-btn {
+            display: block; width: 100%; margin-top: 8px; padding: 6px;
+            background: #e1f5fe; color: #0288d1;
+            border: 1px dashed #29b6f6; border-radius: 6px;
+            cursor: pointer; font-size: 12px; font-weight: bold;
+            text-align: center; transition: 0.2s;
+        }
+        .advisor-action-btn:hover { background: #b3e5fc; }
+
+        /* 7. 底部区域 */
+        .advisor-footer {
             padding: 10px; background: #fff; border-top: 1px solid #eee;
             display: flex; flex-direction: column; gap: 8px;
         }
-        
-        /* 下拉菜单分组样式 */
-        #style-select {
-            width: 100%; padding: 8px; border: 2px solid #74b9ff; border-radius: 8px;
-            background: #f0f9ff; color: #0984e3; font-size: 12px; font-weight: bold; outline: none;
-        }
-        optgroup { font-style: normal; color: #555; background: #fff; }
 
-        .input-group { display: flex; gap: 5px; }
-        #reqInput {
+        /* 下拉框 & 输入框 */
+        #style-select {
+            width: 100%; padding: 6px; border: 2px solid #74b9ff; border-radius: 8px;
+            background: #f0f9ff; color: #0984e3; font-size: 12px; outline: none; font-weight: bold;
+        }
+        #advisorInput {
             flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 6px 12px;
             font-size: 12px; outline: none; background: #fafafa;
         }
-        #sendBtn {
+        #advisorSend {
             background: #74b9ff; color: white; border: none; border-radius: 20px;
             padding: 0 15px; cursor: pointer; font-weight: bold; font-size: 12px;
         }
-        
-        .fav-btn {
-            background: #fff7d1; border: 1px solid #ffeaa7; color: #d35400;
-            border-radius: 12px; padding: 5px; font-size: 11px; cursor: pointer; width: 100%;
+
+        /* --- 🔧 补丁：军师折叠模式 (只剩标题栏) --- */
+        #${BOX_ID}.collapsed {
+            height: 45px !important;       
+            min-height: 0 !important;      
+            resize: none !important;       
+            overflow: hidden !important;   
+        }
+        #${BOX_ID}.collapsed > *:not(#${HEADER_ID}) {
+            display: none !important;
         }
     `;
     document.head.appendChild(style);
 
-    // 2. 数据管理：读取世界书
-    // 存储结构：Array [{ bookName: "文件名", entries: [{name, content}, ...] }]
-    function getLibrary() {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    // 2. 数据逻辑 (V11 内核)
+    function getLibrary() { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+    function saveLibrary(lib) { 
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(lib)); 
+        renderSelector(); 
+        updateStatus();
     }
 
-    function saveLibrary(lib) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(lib));
-        renderSelector();
-        updateBookStatus();
-    }
-
-    // 解析酒馆格式
-    function parseAndImport(file, json) {
+    // 导入解析
+    function importWorldBook(file, json) {
         let entries = [];
-        
-        // 情况A: 标准酒馆格式 { "entries": { "0": {...}, "1": {...} } }
-        if (json.entries && !Array.isArray(json.entries)) {
-            entries = Object.values(json.entries);
-        } 
-        // 情况B: 数组格式 { "entries": [...] }
-        else if (Array.isArray(json.entries)) {
-            entries = json.entries;
-        }
-        // 情况C: 纯数组 [...]
-        else if (Array.isArray(json)) {
-            entries = json;
-        }
+        if (json.entries && !Array.isArray(json.entries)) entries = Object.values(json.entries);
+        else if (Array.isArray(json.entries)) entries = json.entries;
+        else if (Array.isArray(json)) entries = json;
 
-        // 提取有效数据
-        const cleanEntries = [];
-        entries.forEach(e => {
-            // comment 是条目名，content 是内容
-            // 有时候酒馆用 key 做名字，我们优先用 comment，没有就用 key[0]
-            const name = e.comment || (Array.isArray(e.key) ? e.key[0] : e.key) || "未命名条目";
-            const content = e.content || "";
-            
-            // 只导入非禁用的、有内容的
-            if (!e.disable && content.trim()) {
-                cleanEntries.push({ name, content });
-            }
-        });
+        const cleanEntries = entries.filter(e => !e.disable && (e.content||"").trim())
+            .map(e => ({ name: e.comment || (Array.isArray(e.key)?e.key[0]:e.key) || "未命名", content: e.content }));
 
-        if (cleanEntries.length === 0) {
-            alert("❌ 这本书里没有有效的条目！(请检查是否禁用了条目)");
-            return;
-        }
+        if (cleanEntries.length === 0) { alert("❌ 无有效条目"); return; }
 
-        // 存入库
         const lib = getLibrary();
-        // 如果已存在同名书，先删除旧的
         const bookName = file.name.replace('.json', '');
         const newLib = lib.filter(b => b.bookName !== bookName);
-        
-        newLib.push({
-            bookName: bookName,
-            entries: cleanEntries
-        });
-        
+        newLib.push({ bookName, entries: cleanEntries });
         saveLibrary(newLib);
-        alert(`✅ 成功导入世界书：《${bookName}》\n📚 包含 ${cleanEntries.length} 个模板样式！`);
+        alert(`✅ 导入《${bookName}》\n含 ${cleanEntries.length} 个样式`);
     }
 
-    // 3. 渲染下拉菜单 (核心层级逻辑)
+    // 渲染下拉框
     function renderSelector() {
-        const select = document.getElementById('style-select');
-        if (!select) return;
-
+        const sel = document.getElementById('style-select');
+        if(!sel) return;
         const lib = getLibrary();
-        
-        // 默认选项
-        let html = `<option value="random_all">🎲 全库随机抽取 (默认)</option>`;
-
-        if (lib.length === 0) {
-            html = `<option value="">(空) 请先导入世界书 JSON</option>`;
-        } else {
-            // 遍历每一本书
-            lib.forEach((book, bookIdx) => {
-                // 使用 optgroup 分组，显示书名
-                html += `<optgroup label="📚 ${book.bookName}">`;
-                // 遍历书里的条目
-                book.entries.forEach((entry, entryIdx) => {
-                    // value 格式： "bookIndex_entryIndex"
-                    html += `<option value="${bookIdx}_${entryIdx}">└─ ${entry.name}</option>`;
-                });
-                html += `</optgroup>`;
-            });
-        }
-        select.innerHTML = html;
+        let h = `<option value="random_all">🎲 随机挑选样式 (默认)</option>`;
+        if(lib.length===0) h = `<option value="">(空) 请点击上方导入按钮</option>`;
+        else lib.forEach((b, bi) => {
+            h += `<optgroup label="📚 ${b.bookName}">`;
+            b.entries.forEach((e, ei) => h += `<option value="${bi}_${ei}">└─ ${e.name}</option>`);
+            h += `</optgroup>`;
+        });
+        sel.innerHTML = h;
     }
 
-    function updateBookStatus() {
+    function updateStatus() {
         const lib = getLibrary();
-        const el = document.getElementById('book-info-text');
-        if(el) el.innerText = `当前已导入 ${lib.length} 本世界书，共 ${lib.reduce((a,b)=>a+b.entries.length, 0)} 个样式`;
+        const el = document.getElementById('book-status');
+        if(el) el.innerText = lib.length > 0 ? `📚 已载入 ${lib.length} 本书` : "📂 暂无世界书";
     }
 
-    // 4. 界面渲染
+    // 3. 界面渲染
     function renderUI() {
         if (document.getElementById(BTN_ID)) return;
 
+        // 悬浮球
         const btn = document.createElement('div');
-        btn.id = BTN_ID; btn.innerHTML = '📚'; btn.title = "小剧场世界书";
+        btn.id = BTN_ID; btn.innerHTML = '📜'; btn.title = "打开军师";
         document.body.appendChild(btn);
 
+        // 主窗口
         const box = document.createElement('div');
         box.id = BOX_ID;
         box.innerHTML = `
-            <div class="header-bar" id="drag-header-v11">
-                <span>🎬 军师 (世界书引擎)</span>
-                <span style="cursor:pointer;" onclick="document.getElementById('${BOX_ID}').style.display='none'">×</span>
+            <div id="${HEADER_ID}">
+                <span>🤖 军师小剧场 (样式引擎)</span>
+                <span style="display:flex; gap:10px;">
+                    <span id="st-collapse" style="cursor:pointer;" title="折叠">▼</span>
+                    <span id="st-close" style="cursor:pointer;" title="关闭">×</span>
+                </span>
             </div>
-            
-            <div class="book-shelf">
-                <input type="file" id="wb-file-input" accept=".json" style="display:none;">
-                <button class="import-btn" onclick="document.getElementById('wb-file-input').click()">
-                    <span>📥</span> 导入世界书文件 (.json)
+
+            <div class="advisor-toolbar">
+                <input type="file" id="wb-input" accept=".json" style="display:none;">
+                <button class="advisor-tool-btn" onclick="document.getElementById('wb-input').click()">
+                    📥 导入世界书
                 </button>
-                <div id="book-info-text" class="current-book-info">暂无数据</div>
+                <div id="book-status" style="font-size:10px; color:#aaa; margin-left:10px;">检查中...</div>
             </div>
 
             <div id="advisorChat">
                 <div class="advisor-bubble" style="background:#fff7d1; border-color:#ffeaa7; color:#d35400;">
-                    <b>👋 欢迎使用！</b><br>
-                    请导入您珍藏的小剧场世界书 JSON。<br>
-                    我会读取其中的<b>【条目名】</b>作为分类，<b>【内容】</b>作为排版格式。
+                    <b>👋 界面已恢复！</b><br>
+                    1. 点击上方导入您的世界书 JSON。<br>
+                    2. 在下方选择样式或随机。<br>
+                    3. 窗口可以自由拖拽、缩放。
                 </div>
             </div>
 
-            <div class="footer-area">
-                <div style="font-size:11px; color:#aaa; margin-bottom:2px;">选择模板样式:</div>
+            <div class="advisor-footer">
                 <select id="style-select"></select>
-
-                <div class="input-group">
-                    <input type="text" id="reqInput" placeholder="剧情要求 (不填则自由发挥)...">
-                    <button id="sendBtn">生成</button>
+                <div style="display:flex; gap:5px;">
+                    <input type="text" id="advisorInput" placeholder="输入要求...">
+                    <button id="advisorSend">生成</button>
                 </div>
-                <button class="fav-btn" id="btn-view-favs">⭐ 查看生成历史</button>
+                <button class="advisor-action-btn" id="btn-favs">⭐ 查看历史记录</button>
             </div>
         `;
         document.body.appendChild(box);
         
         renderSelector();
-        updateBookStatus();
+        updateStatus();
 
         // === 事件绑定 ===
-        
-        // 1. 导入
-        document.getElementById('wb-file-input').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(ev) {
-                try {
-                    const json = JSON.parse(ev.target.result);
-                    parseAndImport(file, json);
-                } catch(err) { alert("JSON解析错误: " + err); }
-            };
-            reader.readAsText(file);
-            this.value = '';
-        });
 
-        // 2. 生成 (核心逻辑)
-        document.getElementById('sendBtn').onclick = async function() {
+        // 导入
+        document.getElementById('wb-input').onchange = function(e) {
+            if(e.target.files[0]) {
+                const r = new FileReader();
+                r.onload = ev => { try { importWorldBook(e.target.files[0], JSON.parse(ev.target.result)); } catch(err){ alert("解析失败"); } };
+                r.readAsText(e.target.files[0]);
+                this.value = '';
+            }
+        };
+
+        // 生成
+        document.getElementById('advisorSend').onclick = async function() {
             const lib = getLibrary();
-            if (lib.length === 0) { alert("请先导入世界书！"); return; }
-
+            if(lib.length===0) { alert("请先导入世界书！"); return; }
+            
             const val = document.getElementById('style-select').value;
-            const req = document.getElementById('reqInput').value;
+            const req = document.getElementById('advisorInput').value;
             const chat = document.getElementById('advisorChat');
-            const btn = document.getElementById('sendBtn');
+            const btn = document.getElementById('advisorSend');
 
-            if (!window.SillyTavern) { alert("酒馆未连接"); return; }
+            if(!window.SillyTavern) { alert("酒馆未连接"); return; }
 
+            // 抽取样式
             let targetStyle = null;
-
-            // === 🎲 抽取逻辑 ===
-            if (val === "random_all") {
-                // 1. 先随机选一本书
-                const randBook = lib[Math.floor(Math.random() * lib.length)];
-                // 2. 再随机选一个条目
-                const randEntry = randBook.entries[Math.floor(Math.random() * randBook.entries.length)];
-                targetStyle = { name: `[随机] ${randEntry.name}`, content: randEntry.content };
+            if(val === 'random_all') {
+                const rb = lib[Math.floor(Math.random()*lib.length)];
+                const re = rb.entries[Math.floor(Math.random()*rb.entries.length)];
+                targetStyle = { name: `[随机] ${re.name}`, content: re.content };
             } else {
-                // 指定选择 "bookIndex_entryIndex"
-                const [bIdx, eIdx] = val.split('_').map(Number);
-                targetStyle = lib[bIdx].entries[eIdx];
+                const [bi, ei] = val.split('_').map(Number);
+                targetStyle = lib[bi].entries[ei];
             }
 
             btn.innerText = "⏳"; btn.disabled = true;
-            chat.innerHTML += `<div class="loading-tip" style="font-size:10px;text-align:center;color:#aaa;">🎥 正在应用样式：${targetStyle.name}...</div>`;
+            chat.innerHTML += `<div class="loading-tip" style="font-size:10px;text-align:center;color:#aaa;">🎥 应用样式：${targetStyle.name}</div>`;
             chat.scrollTop = chat.scrollHeight;
 
             try {
-                const context = SillyTavern.getContext();
-                const charName = context.characters[context.characterId].name;
-                const lastMes = context.chat.length > 0 ? context.chat[context.chat.length - 1].mes : "无";
+                const ctx = SillyTavern.getContext();
+                const char = ctx.characters[ctx.characterId].name;
+                const mes = ctx.chat.length>0 ? ctx.chat[ctx.chat.length-1].mes : "";
 
-                const prompt = `
-                [Instruction: Generate a specialized scene.]
-                
-                [STRICT FORMAT REQUIREMENT]
-                You MUST strictly follow the format/style template below. Do not output raw markdown if the template uses HTML tags.
-                
-                === TEMPLATE START ===
-                ${targetStyle.content}
-                === TEMPLATE END ===
-                
-                [Context Info]:
-                Character: ${charName}
-                Story Context: "${lastMes}"
-                User Request: "${req}"
-                
-                Fill the template with creative content now.
-                `;
+                const prompt = `[Instruction: Generate content following specific format.]\n[FORMAT TEMPLATE]:\n${targetStyle.content}\n\n[Context]:\nCharacter: ${char}\nStory: "${mes}"\nReq: "${req}"\n\nFill the template creatively.`;
 
-                const result = await SillyTavern.generateRaw(prompt, "junshi_wb_engine");
-                
+                const res = await SillyTavern.generateRaw(prompt, "junshi_v12");
                 document.querySelectorAll('.loading-tip').forEach(e=>e.remove());
 
                 const html = `
                     <div class="advisor-bubble">
-                        <div style="font-size:10px; color:#74b9ff; margin-bottom:5px;">🎨 ${targetStyle.name}</div>
-                        <div style="border-top:1px dashed #b2ebf2; padding-top:5px;">
-                            ${result}
-                        </div>
-                        <div style="margin-top:8px;">
-                            <button class="fav-btn" onclick="saveFav(this, '${targetStyle.name}')">❤️ 收藏</button>
-                        </div>
+                        <div style="font-size:10px; color:#74b9ff;">🎨 ${targetStyle.name}</div>
+                        <div style="border-top:1px dashed #b2ebf2; padding-top:5px; margin-top:5px;">${res}</div>
+                        <button class="advisor-action-btn" onclick="saveFav(this, '${targetStyle.name}')">❤️ 收藏</button>
                     </div>
                 `;
                 chat.innerHTML += html;
                 chat.scrollTop = chat.scrollHeight;
-
-            } catch(e) {
-                chat.innerHTML += `<div style="color:red;font-size:12px;">❌ 失败: ${e}</div>`;
-            } finally {
-                btn.innerText = "生成"; btn.disabled = false;
-            }
+            } catch(e) { chat.innerHTML += `<div style="color:red;">❌ ${e}</div>`; }
+            finally { btn.innerText = "生成"; btn.disabled = false; }
         };
 
-        // 3. 拖拽/开关/收藏 (标准配置)
-        btn.onclick = () => { const b=document.getElementById(BOX_ID); b.style.display=(b.style.display==='flex'?'none':'flex'); };
+        // 窗口操作 (拖拽、开关、折叠)
+        btn.onclick = () => { const b=document.getElementById(BOX_ID); b.style.display = b.style.display==='flex'?'none':'flex'; };
         
-        const h = document.getElementById('drag-header-v11');
+        document.getElementById('st-close').onclick = () => document.getElementById(BOX_ID).style.display = 'none';
+        
+        document.getElementById('st-collapse').onclick = (e) => {
+            const b = document.getElementById(BOX_ID);
+            b.classList.toggle('collapsed');
+            e.target.innerText = b.classList.contains('collapsed') ? '▲' : '▼';
+        };
+
+        // 拖拽逻辑 (你的 CSS 需要这个)
+        const head = document.getElementById(HEADER_ID);
         let isD=false, sX, sY, iL, iT;
-        h.addEventListener('mousedown', e=>{ if(e.target===h||e.target.tagName==='SPAN'){isD=true;sX=e.clientX;sY=e.clientY;const r=document.getElementById(BOX_ID).getBoundingClientRect();iL=r.left;iT=r.top;} });
-        window.addEventListener('mousemove', e=>{ if(!isD)return; e.preventDefault(); const b=document.getElementById(BOX_ID); b.style.left=(iL+e.clientX-sX)+'px'; b.style.top=(iT+e.clientY-sY)+'px'; });
+        head.addEventListener('mousedown', e => {
+            if(e.target!==head && e.target.tagName!=='SPAN' && e.target.id!=='advisorHeader') return;
+            isD=true; sX=e.clientX; sY=e.clientY;
+            const r = document.getElementById(BOX_ID).getBoundingClientRect();
+            iL=r.left; iT=r.top;
+        });
+        window.addEventListener('mousemove', e => {
+            if(!isD) return; e.preventDefault();
+            const b = document.getElementById(BOX_ID);
+            b.style.left = (iL+e.clientX-sX)+'px';
+            b.style.top = (iT+e.clientY-sY)+'px';
+        });
         window.addEventListener('mouseup', ()=>isD=false);
 
-        document.getElementById('btn-view-favs').onclick = function() {
-            const favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
+        // 收藏夹
+        document.getElementById('btn-favs').onclick = function() {
+            const favs = JSON.parse(localStorage.getItem(FAV_KEY)||"[]");
             let h = `<div class="advisor-bubble" style="background:#e1f5fe;"><b>⭐ 历史记录 (${favs.length})</b></div>`;
-            favs.forEach((f, i) => {
-                h += `<div class="advisor-bubble" style="border-left:3px solid #ff7675;">
-                    <div style="font-size:10px;color:#999;">${f.style} | ${f.date} <span style="float:right;cursor:pointer;color:red;" onclick="delFav(${i})">🗑️</span></div>
-                    <div style="max-height:100px;overflow-y:auto;margin-top:5px;">${f.content}</div>
-                </div>`;
-            });
-            h += `<button class="fav-btn" onclick="document.getElementById('advisorChat').innerHTML=''">清屏</button>`;
+            favs.forEach((f,i)=> h+=`<div class="advisor-bubble" style="border-left:3px solid #fab1a0;"><div style="font-size:10px;color:#999;">${f.style}<span style="float:right;cursor:pointer;color:red;" onclick="delFav(${i})">🗑️</span></div><div style="max-height:80px;overflow-y:auto;">${f.content}</div></div>`);
+            h+=`<button class="advisor-action-btn" onclick="document.getElementById('advisorChat').innerHTML=''">清屏</button>`;
             document.getElementById('advisorChat').innerHTML = h;
         };
     }
 
-    window.saveFav = function(btn, style) {
-        const content = btn.parentElement.previousElementSibling.innerHTML;
-        const item = { style, content, date: new Date().toLocaleString() };
-        let favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
-        favs.unshift(item);
-        localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+    // 全局工具
+    window.saveFav = (btn, s) => {
+        const c = btn.previousElementSibling.innerHTML;
+        const fs = JSON.parse(localStorage.getItem(FAV_KEY)||"[]");
+        fs.unshift({style:s, content:c, date:new Date().toLocaleString()});
+        localStorage.setItem(FAV_KEY, JSON.stringify(fs));
         btn.innerText = "✅"; btn.disabled = true;
     };
-    window.delFav = function(idx) {
-        if(!confirm("删除?")) return;
-        let favs = JSON.parse(localStorage.getItem(FAV_KEY) || "[]");
-        favs.splice(idx, 1);
-        localStorage.setItem(FAV_KEY, JSON.stringify(favs));
-        document.getElementById('btn-view-favs').click();
+    window.delFav = (i) => {
+        const fs = JSON.parse(localStorage.getItem(FAV_KEY)||"[]");
+        fs.splice(i,1); localStorage.setItem(FAV_KEY, JSON.stringify(fs));
+        document.getElementById('btn-favs').click();
     };
 
+    // 保活
     setInterval(() => { if(!document.getElementById(BTN_ID)) renderUI(); }, 1000);
     renderUI();
-
 })();
