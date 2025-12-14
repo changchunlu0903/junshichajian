@@ -1,9 +1,9 @@
 {
-    "name": "军师小剧场 (最终修复版)",
-    "version": "3.0.0",
+    "name": "军师百宝箱 (TreasureBox)",
+    "version": "15.0.0",
     "author": "Lili",
-    "description": "集沉浸模式、小剧场生成、收藏夹于一体的军师插件。",
+    "description": "集成了小剧场模式的百宝箱，支持世界书导入与自由拖拽。",
     "repo": "https://github.com/changchunlu0903/junshichajian",
-    "css": "style.css",
-    "js": "index.js"
+    "js": "index.js",
+    "css": ""
 }
