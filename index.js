@@ -115,39 +115,79 @@
     function saveLibrary(data) { localStorage.setItem(KEY_LIB, JSON.stringify(data)); updateTheaterUI(); }
 
     // 暴力解析 (适配极光小剧场)
+        // ================= 📂 修复版：万能世界书解析 =================
     function importWorldBook(file, json) {
         let rawEntries = [];
-        if (json.entries) {
-            rawEntries = Array.isArray(json.entries) ? json.entries : Object.values(json.entries);
-        } else if (Array.isArray(json)) {
+        console.log("正在尝试解析文件:", file.name);
+
+        // 1. 暴力查找数据源
+        // 情况 A: 标准酒馆格式 (对象) -> {"entries": {"0":{...}, "1":{...}}}
+        if (json.entries && !Array.isArray(json.entries)) {
+            rawEntries = Object.values(json.entries);
+        } 
+        // 情况 B: 数组格式 -> {"entries": [...]}
+        else if (json.entries && Array.isArray(json.entries)) {
+            rawEntries = json.entries;
+        } 
+        // 情况 C: 纯数组 -> [...]
+        else if (Array.isArray(json)) {
             rawEntries = json;
-        } else {
+        } 
+        // 情况 D: 单个对象或奇怪格式，尝试直接转
+        else {
             rawEntries = Object.values(json);
         }
 
+        // 2. 数据清洗 (提取名字和内容)
         const clean = [];
-        rawEntries.forEach(e => {
+        rawEntries.forEach((e, index) => {
+            // 过滤无效数据
             if (!e || typeof e !== 'object') return;
-            const content = e.content || e.prompt || "";
-            if (!content) return;
             
-            let name = e.comment;
-            if (!name && e.key) name = Array.isArray(e.key) ? e.key[0] : e.key;
-            if (!name) name = "未命名样式";
+            // 提取内容 (兼容 content 或 prompt 字段)
+            const content = e.content || e.prompt || "";
+            // 如果内容为空，且不是占位符，就跳过
+            if (!content.trim()) return; 
 
-            clean.push({ name, content });
+            // 提取名字逻辑：
+            // 1. 优先用 comment (备注/中文名)
+            // 2. 其次用 key (触发词)
+            // 3. 最后用 uid 或 索引
+            let name = e.comment;
+            if (!name && e.key) {
+                // key 可能是数组也可能是字符串
+                name = Array.isArray(e.key) ? e.key[0] : e.key;
+            }
+            if (!name) name = `样式-${e.uid || index}`;
+
+            clean.push({ name: name, content: content });
         });
 
-        if (clean.length === 0) { alert("❌ 无法解析内容，请确认文件格式！"); return; }
+        // 3. 检查结果
+        if (clean.length === 0) { 
+            console.error("解析失败，数据源:", json);
+            alert("❌ 解析失败：在这个文件里没找到有效的小剧场内容！\n请确认这是有效的世界书(World Info)文件。"); 
+            return; 
+        }
 
+        // 4. 保存入库
         const lib = getLibrary();
-        const bName = file.name.replace(/\.json$/i, '');
+        // 去掉文件名后缀，作为书名
+        const bName = file.name.replace(/\.(json|txt)$/i, '');
+        
+        // 如果已经有同名书，先删除旧的（覆盖逻辑）
         const newLib = lib.filter(b => b.bookName !== bName);
-        newLib.push({ bookName: bName, entries: clean });
+        
+        // 存入新书
+        newLib.push({ 
+            bookName: bName, 
+            entries: clean 
+        });
         
         saveLibrary(newLib);
-        alert(`✅ 导入成功！\n📚 书名：${bName}\n📄 包含 ${clean.length} 个模板`);
+        alert(`✅ 成功导入！\n📘 书名：《${bName}》\n📑 包含 ${clean.length} 个模板\n(请点击下拉菜单查看)`);
     }
+
 
 
     // ================= 3. UI 构建函数 =================
