@@ -1,5 +1,5 @@
 // =============================================================
-//  军师百宝箱 (TreasureBox) - V17.0 插件版
+//  军师百宝箱 (TreasureBox) - V17.0 插件最终版
 //  包含：全局世界书读取 + 万能格式解析 + 自由拖拽 + 蓝黄UI
 // =============================================================
 
@@ -454,7 +454,7 @@
         document.getElementById('jb-view-fav').click();
     };
 
-    // 🔥 暴力拖拽逻辑
+    // 🔥 暴力拖拽逻辑 (使用 setProperty 覆盖 !important)
     function makeDraggable(el, handle) {
         let isD=false, sX, sY, iL, iT;
         const start = (e) => {
@@ -467,6 +467,7 @@
             if(!isD) return; if(e.cancelable) e.preventDefault();
             const evt = e.touches?e.touches[0]:e;
             const dx=evt.clientX-sX; const dy=evt.clientY-sY;
+            // 覆盖 CSS 的 !important
             el.style.setProperty('left',(iL+dx)+'px','important');
             el.style.setProperty('top',(iT+dy)+'px','important');
             el.style.setProperty('bottom','auto','important');
