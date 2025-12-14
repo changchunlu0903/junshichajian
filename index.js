@@ -1,53 +1,97 @@
 // =============================================================
-//  军师百宝箱 (TreasureBox) - V20.0 核心修复版
-//  修复：TypeError 生成报错问题 (自动匹配酒馆原生生成函数)
+//  军师百宝箱 (TreasureBox) - V21.0 终极生成修复版
+//  修复：TypeError 生成报错 (增加 API 直连生成作为保底)
 // =============================================================
 
 (function() {
-    console.log("🚀 军师百宝箱 V20.0 (修复生成) 已加载...");
+    console.log("🚀 军师百宝箱 V21.0 (生成修复) 已加载...");
 
     // === 0. ID & 变量定义 ===
-    const FLOAT_BTN_ID = 'jb-plugin-btn-v20';
-    const MENU_BOX_ID  = 'jb-plugin-menu-v20';
-    const THEATER_ID   = 'jb-plugin-theater-v20';
+    const FLOAT_BTN_ID = 'jb-plugin-btn-v21';
+    const MENU_BOX_ID  = 'jb-plugin-menu-v21';
+    const THEATER_ID   = 'jb-plugin-theater-v21';
     
     // 内存变量
     let currentEntries = [];
-    const STORAGE_KEY_FAV = 'jb_plugin_favs_v20';
+    const STORAGE_KEY_FAV = 'jb_plugin_favs_v21';
 
-    // 🔧 自定义 API 设置区 (一般留空即可)
-    const CUSTOM_API_URL = ""; 
-
-    // 获取 Token
+    // 获取 CSRF Token (防止 API 403 错误)
     function getCsrfToken() {
         if (window.csrfToken) return window.csrfToken;
         const match = document.cookie.match(new RegExp('(^| )X-CSRF-Token=([^;]+)'));
         return match ? match[2] : '';
     }
 
-    // 🔥🔥🔥 核心修复：智能生成函数 🔥🔥🔥
-    // 这个函数会自动寻找酒馆里能用的“静默生成”方法
+    // 🔥🔥🔥 核心修复：核弹级智能生成函数 🔥🔥🔥
     async function smartGenerate(prompt) {
         console.log("正在尝试调用生成函数...");
         
-        // 1. 尝试调用 window.generateQuiet (最常见的酒馆全局函数)
+        // 方案 1: 尝试调用旧版全局函数
         if (typeof window.generateQuiet === 'function') {
+            console.log("使用 window.generateQuiet");
             return await window.generateQuiet(prompt);
         }
         
-        // 2. 尝试调用 window.generate_quiet (旧版酒馆)
+        // 方案 2: 尝试调用下划线版本
         if (typeof window.generate_quiet === 'function') {
+            console.log("使用 window.generate_quiet");
             return await window.generate_quiet(prompt);
         }
 
-        // 3. 尝试从 SillyTavern 上下文获取
+        // 方案 3: 尝试从 Context 获取
         if (window.SillyTavern && window.SillyTavern.getContext) {
             const ctx = window.SillyTavern.getContext();
-            if (typeof ctx.generateQuiet === 'function') return await ctx.generateQuiet(prompt);
+            if (typeof ctx.generateQuiet === 'function') {
+                console.log("使用 Context.generateQuiet");
+                return await ctx.generateQuiet(prompt);
+            }
         }
 
-        // 4. 如果都找不到，抛出明确错误
-        throw new Error("未找到生成函数 (generateQuiet)。请确保酒馆版本支持插件调用。");
+        // ☢️ 方案 4 (核弹保底): 直接调用后台 API
+        // 如果上面都找不到，说明前端改版了，我们直接绕过前端请求后台
+        console.log("前端函数未找到，尝试直接调用 API...");
+        try {
+            // 获取当前生成的参数 (温度、最大长度等)
+            let params = {};
+            if (window.SillyTavern && window.SillyTavern.getContext) {
+                // 尝试获取当前预设参数
+                params = window.SillyTavern.getContext().generation_settings_params || {};
+            }
+
+            // 构造请求包
+            const payload = {
+                prompt: prompt,
+                use_story: false,
+                use_memory: false,
+                use_authors_note: false,
+                use_world_info: false,
+                quiet: true,
+                ...params // 继承当前的生成设置
+            };
+
+            const response = await fetch('/api/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': getCsrfToken()
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error(`API响应错误: ${response.status}`);
+            
+            const data = await response.json();
+            // 酒馆API返回格式通常是 { results: [{ text: "..." }] }
+            if (data.results && data.results.length > 0) {
+                return data.results[0].text;
+            } else {
+                throw new Error("API返回数据为空");
+            }
+
+        } catch (e) {
+            console.error("API直连失败:", e);
+            throw new Error("所有生成方式均失效，请检查后台连接。\n详细错误: " + e.message);
+        }
     }
 
 
@@ -156,7 +200,6 @@
 
     // ================= 2. 核心逻辑：本地解析 + 内存读取 =================
     
-    // 解析器
     function parseAndLoad(entriesSource, sourceName) {
         let rawEntries = [];
         if (entriesSource.entries) {
@@ -297,10 +340,9 @@
 
             <div id="jb-chat-area">
                 <div class="jb-bubble" style="background:#fff7d1; border-color:#ffeaa7;">
-                    <b>👋 准备就绪</b><br>
-                    点击上方按钮加载世界书。<br>
-                    点击底部绿色按钮生成。<br>
-                    (生成按钮已修复)
+                    <b>👋 欢迎主公！</b><br>
+                    请点击上方按钮加载模板，然后在下方生成。<br>
+                    (生成功能已修复)
                 </div>
             </div>
 
@@ -337,7 +379,7 @@
             m.style.top = t.style.top; m.style.left = t.style.left;
         };
 
-        // 功能
+        // 功能绑定
         document.getElementById('jb-file-input').onchange = (e) => { if(e.target.files[0]) { handleFileImport(e.target.files[0]); e.target.value = ''; } };
         document.getElementById('jb-read-active').onclick = handleReadActive;
         
@@ -347,9 +389,9 @@
             e.target.innerText = t.classList.contains('collapsed') ? '▲' : '▼';
         };
 
-        // 🔥 生成逻辑 (修复了调用函数)
+        // 🔥 生成逻辑 (使用 smartGenerate)
         document.getElementById('jb-send').onclick = async () => {
-            if (currentEntries.length === 0) { alert("⚠️ 请先加载模板！"); return; }
+            if (currentEntries.length === 0) { alert("⚠️ 请先导入或读取模板！"); return; }
             
             const val = document.getElementById('jb-select').value;
             const req = document.getElementById('jb-input').value;
@@ -375,21 +417,9 @@
                 const charName = context.characters[context.characterId].name;
                 const lastMes = context.chat.length > 0 ? context.chat[context.chat.length-1].mes : "";
 
-                const prompt = `
-                [Instruction: Generate content strictly following the template format below.]
-                
-                [TEMPLATE STYLE]:
-                ${targetStyle.content}
-                
-                [CONTEXT]:
-                Character: ${charName}
-                Story: "${lastMes}"
-                User Request: "${req}"
-                
-                Fill the template creatively now.
-                `;
+                const prompt = `[Instruction: Generate content strictly following the template format below.]\n[TEMPLATE STYLE]:\n${targetStyle.content}\n[CONTEXT]:\nCharacter: ${charName}\nStory: "${lastMes}"\nUser Request: "${req}"\nFill the template creatively now.`;
 
-                // 🔥 使用我们定义的智能生成函数，不再调用 undefined 的函数
+                // 🔥 调用智能生成函数
                 const result = await smartGenerate(prompt);
                 
                 chat.innerHTML += `<div class="jb-bubble"><div style="font-size:10px; color:#74b9ff; margin-bottom:5px;">🎨 ${targetStyle.name}</div><div style="border-top:1px dashed #b2ebf2; padding-top:5px;">${result}</div><button onclick="window.jbSaveFav(this, '${targetStyle.name}')" style="margin-top:5px; width:100%; border:1px solid #eee; background:#fff; cursor:pointer;">❤️ 收藏</button></div>`;
@@ -399,7 +429,6 @@
             finally { btn.innerText = "✨ 立即生成 ✨"; btn.disabled = false; btn.style.background = "#00b894"; }
         };
         
-        // 收藏夹
         document.getElementById('jb-view-fav').onclick = () => {
             const favs = JSON.parse(localStorage.getItem(STORAGE_KEY_FAV)||"[]");
             let h = `<div class="jb-bubble" style="background:#e1f5fe;"><b>⭐ 历史记录 (${favs.length})</b></div>`;
