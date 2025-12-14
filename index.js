@@ -111,85 +111,138 @@
     // ================= 2. 核心逻辑：API 直连 & 解析 =================
     
     // 🔥 A. 获取所有世界书列表 (全局)
+        // ================= 2. 核心逻辑：双通道读取 (API + 内存降级) =================
+    
+    // 🔍 辅助：获取酒馆的安全令牌 (解决连接被拒问题)
+    function getCsrfToken() {
+        // 尝试从全局变量获取
+        if (window.csrfToken) return window.csrfToken;
+        // 尝试从 Cookie 获取
+        const match = document.cookie.match(new RegExp('(^| )X-CSRF-Token=([^;]+)'));
+        return match ? match[2] : '';
+    }
+
+    // 🔥 A. 获取所有世界书列表 (增强版)
     async function fetchBookList() {
         const btn = document.getElementById('jb-refresh-books');
         const sel = document.getElementById('jb-book-select');
+        const status = document.getElementById('jb-status');
         if(btn) btn.innerText = "⏳";
         
+        sel.innerHTML = `<option value="">📡 正在连接酒馆...</option>`;
+
         try {
-            // 调用 API 获取文件列表
+            // 尝试通道 1：通过 API 获取全部文件 (带上 Token)
             const response = await fetch('/api/worldinfo/get_names', { 
                 method: 'POST', 
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': getCsrfToken() // 🔑 关键修复：带上通行证
+                },
                 body: JSON.stringify({}) 
             });
-            const data = await response.json();
+
+            if (!response.ok) throw new Error(`API错误 ${response.status}`);
             
-            // 兼容性处理：不同版本的酒馆返回格式不同
-            let list = [];
-            if (Array.isArray(data)) {
-                list = data; 
-            } else if (data.file_names && Array.isArray(data.file_names)) {
-                list = data.file_names; 
-            } else if (data.list && Array.isArray(data.list)) {
-                list = data.list; 
-            }
+            const data = await response.json();
+            // 兼容各种乱七八糟的返回格式
+            let list = data.file_names || data.list || (Array.isArray(data) ? data : []);
 
             list = list.filter(n => n.toLowerCase().endsWith('.json')).sort();
 
-            if (list.length === 0) {
-                sel.innerHTML = `<option value="">❌ 未找到世界书</option>`;
-            } else {
-                let html = `<option value="">📚 请选择世界书 (${list.length})</option>`;
+            if (list.length > 0) {
+                let html = `<option value="">📚 请选择世界书 (共${list.length}本)</option>`;
                 list.forEach(name => {
                     const displayName = name.replace(/\.json$/i, '');
-                    html += `<option value="${name}">${displayName}</option>`;
+                    html += `<option value="${name}" data-source="api">${displayName}</option>`;
                 });
                 sel.innerHTML = html;
-                document.getElementById('jb-status').innerText = `✅ 成功加载 ${list.length} 本全局世界书`;
+                status.innerText = `✅ 已连接后台 (API模式)`;
+            } else {
+                throw new Error("后台列表为空");
             }
 
         } catch (e) {
-            console.error("列表获取失败:", e);
-            sel.innerHTML = `<option value="">❌ 错误</option>`;
+            console.warn("API读取失败，切换到内存模式:", e);
+            
+            // ⚠️ 通道 2 (保底)：如果API失败，直接读取当前聊天已激活的世界书
+            if (window.SillyTavern && SillyTavern.getContext) {
+                const ctx = SillyTavern.getContext();
+                // 强制抓取当前生效的 entries
+                const activeEntries = ctx.worldInfo && ctx.worldInfo.entries ? ctx.worldInfo.entries : [];
+                
+                if (activeEntries.length > 0) {
+                    sel.innerHTML = `<option value="active_memory" data-source="memory">💾 当前已挂载的世界书</option>`;
+                    status.innerText = `⚠️ API受阻，仅读取当前挂载`;
+                    // 把当前的直接存入，方便后续读取
+                    window._jb_temp_active = activeEntries; 
+                } else {
+                    sel.innerHTML = `<option value="">❌ 无法读取 (请先在酒馆挂载世界书)</option>`;
+                    status.innerText = "❌ 连接失败";
+                }
+            } else {
+                alert("无法连接酒馆，请确保页面已加载完毕！");
+            }
         } finally {
             if(btn) btn.innerText = "🔄";
         }
     }
 
-    // 🔥 B. 加载指定书内容 (万能解析)
+    // 🔥 B. 加载指定书内容 (兼容 API 和 内存模式)
     async function loadSelectedBook() {
-        const bookName = document.getElementById('jb-book-select').value;
+        const sel = document.getElementById('jb-book-select');
+        const bookName = sel.value;
+        const sourceType = sel.options[sel.selectedIndex].getAttribute('data-source'); // 判断来源
+        
         if (!bookName) return;
 
         const stStatus = document.getElementById('jb-status');
         stStatus.innerText = "⏳ 解析中...";
 
-        try {
-            // API 获取内容
-            const response = await fetch('/api/worldinfo/get', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: bookName })
-            });
-            const json = await response.json();
-            const data = json.data || json; 
+        let rawEntries = [];
 
-            // === 暴力提取逻辑 ===
-            let rawEntries = [];
-            if (data.entries) {
-                if (Array.isArray(data.entries)) rawEntries = data.entries;
-                else rawEntries = Object.values(data.entries); // 处理极光小剧场格式
-            } else if (Array.isArray(data)) {
-                rawEntries = data;
-            } else {
-                rawEntries = Object.values(data);
+        try {
+            if (sourceType === 'api') {
+                // === 来源 A: API 读取 ===
+                const response = await fetch('/api/worldinfo/get', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': getCsrfToken() 
+                    },
+                    body: JSON.stringify({ name: bookName })
+                });
+                const json = await response.json();
+                const data = json.data || json;
+                
+                // 暴力解构 entries
+                if (data.entries) {
+                    rawEntries = Array.isArray(data.entries) ? data.entries : Object.values(data.entries);
+                } else {
+                    rawEntries = Array.isArray(data) ? data : Object.values(data);
+                }
+
+            } else if (sourceType === 'memory') {
+                // === 来源 B: 内存保底读取 ===
+                rawEntries = window._jb_temp_active || [];
+                // 如果内存是空的，再尝试抓一次
+                if (rawEntries.length === 0 && window.SillyTavern) {
+                     const ctx = SillyTavern.getContext();
+                     if(ctx.worldInfo) rawEntries = ctx.worldInfo.entries;
+                }
             }
 
-            // 清洗
+            // === 统一清洗数据 ===
             const cleanEntries = [];
-            rawEntries.forEach((e, idx) => {
+            
+            // 转换为数组处理 (以防万一)
+            const entriesArray = Array.isArray(rawEntries) ? rawEntries : Object.values(rawEntries);
+
+            entriesArray.forEach((e, idx) => {
                 if (!e || typeof e !== 'object') return;
+                // 只要未禁用 (API模式下可能没有disable字段，默认当做启用)
+                if (e.disable === true) return; 
+
                 const content = e.content || e.prompt || "";
                 if (!content.trim()) return;
 
@@ -203,22 +256,24 @@
             });
 
             if (cleanEntries.length === 0) {
-                stStatus.innerText = "⚠️ 内容为空或格式不支持";
+                stStatus.innerText = "⚠️ 该书没有有效内容";
                 return;
             }
 
-            // 存入
+            // 存入全局变量供生成使用
             currentEntries = cleanEntries;
             
             // 更新 UI
-            updateStyleDropdown(bookName.replace(/\.json$/i, ''));
+            const displayName = sourceType === 'memory' ? '当前挂载' : bookName.replace(/\.json$/i, '');
+            updateStyleDropdown(displayName);
 
         } catch (e) {
             console.error(e);
-            stStatus.innerText = "❌ 读取失败";
+            stStatus.innerText = "❌ 读取错误";
             alert("读取失败: " + e.message);
         }
     }
+
 
     // 🔥 C. 更新样式列表
     function updateStyleDropdown(bookTitle) {
