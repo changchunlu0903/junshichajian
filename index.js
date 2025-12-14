@@ -1,32 +1,26 @@
 // =============================================================
-//  军师百宝箱 V15.0 - 插件版
-//  架构：悬浮球 -> 主菜单(百宝箱) -> 功能子页面(小剧场等)
+//  军师百宝箱 V16.0 - 原生直连版 (无需导入文件)
+//  核心：直接读取酒馆内存中的 Active World Info
 // =============================================================
 
 (function() {
-    console.log("🚀 军师百宝箱 V15.0 已加载...");
+    console.log("🚀 军师百宝箱 V16.0 (直连版) 已加载...");
 
-    // === ID 定义 ===
-    const FLOAT_BTN_ID = 'jb-float-btn';      // 悬浮球
-    const MENU_BOX_ID  = 'jb-main-menu';      // 主菜单
-    const THEATER_ID   = 'jb-theater-box';    // 小剧场面板
+    const FLOAT_BTN_ID = 'jb-float-btn-v16';
+    const MENU_BOX_ID  = 'jb-main-menu-v16';
+    const THEATER_ID   = 'jb-theater-box-v16';
     
-    // === 存储 Key ===
-    const KEY_LIB = 'junshi_box_lib';
-    const KEY_FAV = 'junshi_box_fav';
+    // 内存变量 (不再存LocalStorage，每次直接读酒馆的最新状态)
+    let currentEntries = [];
 
-    // === 1. 注入 CSS (蓝黄配色 + 百宝箱布局) ===
+    // === 1. 注入 CSS (蓝黄配色 + 你的美化要求) ===
     const style = document.createElement('style');
     style.innerHTML = `
-        /* --- 通用：强制置顶与拖拽 --- */
-        .jb-fixed-top {
-            position: fixed !important; z-index: 2147483647 !important;
-        }
-        .jb-draggable-header {
-            cursor: move; user-select: none;
-        }
+        /* 强制置顶 & 拖拽 */
+        .jb-fixed-top { position: fixed !important; z-index: 2147483647 !important; }
+        .jb-draggable-header { cursor: move; user-select: none; }
 
-        /* --- 悬浮球 --- */
+        /* 悬浮球 */
         #${FLOAT_BTN_ID} {
             top: 20px !important; left: 20px !important;
             width: 55px; height: 55px;
@@ -38,7 +32,7 @@
         }
         #${FLOAT_BTN_ID}:active { transform: scale(0.95); }
 
-        /* --- 通用面板外壳 (复刻你的CSS) --- */
+        /* 面板外壳 */
         .jb-panel {
             width: 340px; height: 520px;
             min-width: 280px; min-height: 350px;
@@ -49,14 +43,14 @@
             resize: both; overflow: hidden;
         }
 
-        /* --- 标题栏 --- */
+        /* 标题栏 */
         .jb-header {
             background: #74b9ff; color: white; padding: 12px 15px;
             font-weight: bold; font-size: 15px;
             display: flex; justify-content: space-between; align-items: center;
         }
 
-        /* --- 主菜单 (百宝箱) 特有样式 --- */
+        /* 百宝箱菜单 */
         .jb-grid {
             padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;
             overflow-y: auto; background: #fffbf0; flex: 1;
@@ -69,19 +63,18 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
         .jb-menu-card:hover { transform: translateY(-3px); border-color: #74b9ff; color: #74b9ff; }
-        .jb-icon { font-size: 28px; }
-        .jb-label { font-size: 13px; font-weight: bold; }
 
-        /* --- 小剧场 特有样式 --- */
+        /* 小剧场工具栏 */
         .jb-toolbar {
             padding: 8px; background: #fffbf0; border-bottom: 1px solid #ffeaa7;
             display: flex; gap: 5px; align-items: center; justify-content: space-between;
         }
-        .jb-btn-small {
-            background: #fff; border: 1px solid #ffeaa7; color: #e67e22;
-            padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+        .jb-btn-refresh {
+            background: #00b894; color: white; border: none; 
+            padding: 5px 12px; border-radius: 5px; font-size: 12px; cursor: pointer;
+            display: flex; align-items: center; gap: 5px; font-weight: bold;
         }
-        .jb-btn-small:hover { background: #fff7d1; }
+        .jb-btn-refresh:hover { background: #019e7e; }
 
         #jb-chat-area { flex: 1; overflow-y: auto; padding: 10px; background: #fffdf5; }
         
@@ -102,112 +95,96 @@
         .jb-input-row { display: flex; gap: 5px; }
         #jb-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 6px 12px; outline: none; background: #fafafa; }
         #jb-send { background: #74b9ff; color: white; border: none; border-radius: 20px; padding: 0 15px; cursor: pointer; font-weight: bold; }
-        
-        /* 隐藏态 */
-        .hidden { display: none !important; }
     `;
     document.head.appendChild(style);
 
 
-    // ================= 2. 核心逻辑：JSON 解析 & 数据 =================
+    // ================= 2. 核心逻辑：直连酒馆 =================
     
-    function getLibrary() { return JSON.parse(localStorage.getItem(KEY_LIB) || "[]"); }
-    function saveLibrary(data) { localStorage.setItem(KEY_LIB, JSON.stringify(data)); updateTheaterUI(); }
-
-    // 暴力解析 (适配极光小剧场)
-        // ================= 📂 修复版：万能世界书解析 =================
-    function importWorldBook(file, json) {
-        let rawEntries = [];
-        console.log("正在尝试解析文件:", file.name);
-
-        // 1. 暴力查找数据源
-        // 情况 A: 标准酒馆格式 (对象) -> {"entries": {"0":{...}, "1":{...}}}
-        if (json.entries && !Array.isArray(json.entries)) {
-            rawEntries = Object.values(json.entries);
-        } 
-        // 情况 B: 数组格式 -> {"entries": [...]}
-        else if (json.entries && Array.isArray(json.entries)) {
-            rawEntries = json.entries;
-        } 
-        // 情况 C: 纯数组 -> [...]
-        else if (Array.isArray(json)) {
-            rawEntries = json;
-        } 
-        // 情况 D: 单个对象或奇怪格式，尝试直接转
-        else {
-            rawEntries = Object.values(json);
+    // 🔥 读取酒馆当前激活的世界书条目
+    function loadActiveWorldInfo() {
+        if (!window.SillyTavern) {
+            alert("❌ 酒馆核心未加载，请刷新页面！");
+            return;
         }
 
-        // 2. 数据清洗 (提取名字和内容)
-        const clean = [];
-        rawEntries.forEach((e, index) => {
-            // 过滤无效数据
-            if (!e || typeof e !== 'object') return;
-            
-            // 提取内容 (兼容 content 或 prompt 字段)
-            const content = e.content || e.prompt || "";
-            // 如果内容为空，且不是占位符，就跳过
-            if (!content.trim()) return; 
+        const context = SillyTavern.getContext();
+        
+        // 获取所有条目 (兼容不同版本的酒馆 API)
+        let entries = [];
+        
+        // 尝试从 prompt 构造数据中获取 (这是最准的，包含角色书和全局书)
+        if (context.worldInfo && context.worldInfo.entries) {
+            entries = context.worldInfo.entries;
+        } 
+        
+        // 过滤：只要没禁用的、有内容的
+        currentEntries = entries.filter(e => !e.disable && (e.content || "").trim());
 
-            // 提取名字逻辑：
-            // 1. 优先用 comment (备注/中文名)
-            // 2. 其次用 key (触发词)
-            // 3. 最后用 uid 或 索引
-            let name = e.comment;
-            if (!name && e.key) {
-                // key 可能是数组也可能是字符串
-                name = Array.isArray(e.key) ? e.key[0] : e.key;
-            }
-            if (!name) name = `样式-${e.uid || index}`;
-
-            clean.push({ name: name, content: content });
-        });
-
-        // 3. 检查结果
-        if (clean.length === 0) { 
-            console.error("解析失败，数据源:", json);
-            alert("❌ 解析失败：在这个文件里没找到有效的小剧场内容！\n请确认这是有效的世界书(World Info)文件。"); 
-            return; 
+        if (currentEntries.length === 0) {
+            alert("⚠️ 未检测到已激活的世界书！\n\n请检查：\n1. 是否在酒馆里挂载了世界书？\n2. 是否勾选了启用？\n3. 角色卡是否关联了角色书？");
+        } else {
+            alert(`✅ 读取成功！\n📚 共获取 ${currentEntries.length} 个激活条目。\n(请点击下拉菜单查看)`);
         }
 
-        // 4. 保存入库
-        const lib = getLibrary();
-        // 去掉文件名后缀，作为书名
-        const bName = file.name.replace(/\.(json|txt)$/i, '');
+        updateDropdown();
+    }
+
+    function updateDropdown() {
+        const sel = document.getElementById('jb-select');
+        const st = document.getElementById('jb-status');
+        if (!sel) return;
+
+        st.innerText = currentEntries.length > 0 ? `✅ 已加载 ${currentEntries.length} 个模板` : "❌ 无数据";
         
-        // 如果已经有同名书，先删除旧的（覆盖逻辑）
-        const newLib = lib.filter(b => b.bookName !== bName);
+        let html = `<option value="random">🎲 随机抽取 (默认)</option>`;
         
-        // 存入新书
-        newLib.push({ 
-            bookName: bName, 
-            entries: clean 
-        });
+        // 分组显示 (虽然直连读取通常是扁平数组，但我们可以按条目名稍微归类)
+        if (currentEntries.length > 0) {
+            html += `<optgroup label="📚 当前激活的条目">`;
+            currentEntries.forEach((e, idx) => {
+                // 优先显示 comment (备注)，没有则显示 key
+                let label = e.comment;
+                if (!label && e.key) {
+                    label = Array.isArray(e.key) ? e.key[0] : e.key;
+                }
+                if (!label) label = `条目 #${idx}`;
+                
+                html += `<option value="${idx}">└─ ${label}</option>`;
+            });
+            html += `</optgroup>`;
+        } else {
+            html += `<option value="">(请先点击上方绿色刷新按钮)</option>`;
+        }
         
-        saveLibrary(newLib);
-        alert(`✅ 成功导入！\n📘 书名：《${bName}》\n📑 包含 ${clean.length} 个模板\n(请点击下拉菜单查看)`);
+        sel.innerHTML = html;
     }
 
 
-
-    // ================= 3. UI 构建函数 =================
+    // ================= 3. UI 构建 =================
 
     function createUI() {
-        if (document.getElementById(FLOAT_BTN_ID)) return;
+        // 清理旧元素 (热重载用)
+        const oldBtn = document.getElementById(FLOAT_BTN_ID);
+        if (oldBtn) oldBtn.remove();
+        const oldMenu = document.getElementById(MENU_BOX_ID);
+        if (oldMenu) oldMenu.remove();
+        const oldTheater = document.getElementById(THEATER_ID);
+        if (oldTheater) oldTheater.remove();
 
         // --- A. 悬浮球 ---
         const btn = document.createElement('div');
         btn.id = FLOAT_BTN_ID;
         btn.className = 'jb-fixed-top';
-        btn.innerHTML = '📦'; // 百宝箱图标
+        btn.innerHTML = '📦';
         btn.title = "打开百宝箱";
         document.body.appendChild(btn);
 
-        // --- B. 主菜单 (百宝箱) ---
+        // --- B. 主菜单 ---
         const menu = document.createElement('div');
         menu.id = MENU_BOX_ID;
         menu.className = 'jb-panel jb-fixed-top';
-        menu.style.top = '90px'; menu.style.left = '20px';
+        menu.style.top = '100px'; menu.style.left = '20px';
         menu.innerHTML = `
             <div class="jb-header jb-draggable-header">
                 <span>📦 军师百宝箱</span>
@@ -215,12 +192,12 @@
             </div>
             <div class="jb-grid">
                 <div class="jb-menu-card" id="btn-open-theater">
-                    <div class="jb-icon">🎬</div>
-                    <div class="jb-label">小剧场模式</div>
+                    <div style="font-size:30px">🎬</div>
+                    <div style="font-weight:bold">小剧场模式</div>
                 </div>
-                <div class="jb-menu-card" onclick="alert('开发中...')">
-                    <div class="jb-icon">🛠️</div>
-                    <div class="jb-label">敬请期待</div>
+                <div class="jb-menu-card" onclick="alert('即将推出...')">
+                    <div style="font-size:30px">🔨</div>
+                    <div style="font-weight:bold">更多功能</div>
                 </div>
             </div>
         `;
@@ -230,7 +207,7 @@
         const theater = document.createElement('div');
         theater.id = THEATER_ID;
         theater.className = 'jb-panel jb-fixed-top';
-        theater.style.top = '90px'; theater.style.left = '20px';
+        theater.style.top = '100px'; theater.style.left = '20px';
         theater.innerHTML = `
             <div class="jb-header jb-draggable-header" id="theater-header">
                 <span style="display:flex; align-items:center; gap:10px;">
@@ -241,188 +218,156 @@
             </div>
             
             <div class="jb-toolbar">
-                <input type="file" id="jb-file" accept=".json" style="display:none;">
-                <button class="jb-btn-small" onclick="document.getElementById('jb-file').click()">📥 导入样式书</button>
-                <div id="jb-status" style="font-size:10px; color:#aaa;">检查中...</div>
+                <button class="jb-btn-refresh" id="jb-refresh-btn">
+                    <span>🔄</span> 读取当前世界书
+                </button>
+                <div id="jb-status" style="font-size:10px; color:#aaa;">等待读取...</div>
             </div>
 
             <div id="jb-chat-area">
-                <div class="jb-bubble" style="background:#fff7d1; border-color:#ffeaa7;">
-                    <b>👋 剧场模式已就绪</b><br>
-                    请选择样式，输入要求，生成内容。<br>
-                    (支持导入极光小剧场等JSON文件)
+                <div class="jb-bubble" style="background:#fff7d1; border-color:#ffeaa7; color:#d35400;">
+                    <b>👋 欢迎主公！</b><br>
+                    无需导入文件。<br>
+                    1. 确保酒馆里已挂载好《极光小剧场》等世界书。<br>
+                    2. 点击上方 <b>[🔄 读取当前世界书]</b>。<br>
+                    3. 在下方选择样式，开始生成。
                 </div>
             </div>
 
             <div class="jb-footer">
                 <select id="jb-select"></select>
                 <div class="jb-input-row">
-                    <input type="text" id="jb-input" placeholder="输入剧情要求...">
+                    <input type="text" id="jb-input" placeholder="剧情要求 (可选)...">
                     <button id="jb-send">生成</button>
                 </div>
             </div>
         `;
         document.body.appendChild(theater);
 
-        // 初始化数据
-        updateTheaterUI();
-
         // === 事件绑定 ===
 
-        // 1. 悬浮球点击 -> 开关主菜单 (如果剧场开着，先关剧场)
+        // 1. 开关主菜单
         btn.onclick = () => {
-            const menuBox = document.getElementById(MENU_BOX_ID);
-            const theaterBox = document.getElementById(THEATER_ID);
-            
-            if (theaterBox.style.display === 'flex') {
-                theaterBox.style.display = 'none';
-                menuBox.style.display = 'flex';
+            const m = document.getElementById(MENU_BOX_ID);
+            const t = document.getElementById(THEATER_ID);
+            if (t.style.display === 'flex') {
+                t.style.display = 'none'; m.style.display = 'flex';
             } else {
-                menuBox.style.display = (menuBox.style.display === 'flex' ? 'none' : 'flex');
+                m.style.display = (m.style.display === 'flex' ? 'none' : 'flex');
             }
         };
 
-        // 2. 主菜单 -> 进小剧场
+        // 2. 菜单跳转
         document.getElementById('btn-open-theater').onclick = () => {
             document.getElementById(MENU_BOX_ID).style.display = 'none';
             const t = document.getElementById(THEATER_ID);
             t.style.display = 'flex';
-            // 同步位置 (让体验更连贯)
             const m = document.getElementById(MENU_BOX_ID);
-            t.style.top = m.style.top;
-            t.style.left = m.style.left;
+            t.style.top = m.style.top; t.style.left = m.style.left;
         };
-
-        // 3. 小剧场 -> 返回主菜单
         document.getElementById('btn-back-menu').onclick = () => {
             document.getElementById(THEATER_ID).style.display = 'none';
             const m = document.getElementById(MENU_BOX_ID);
             m.style.display = 'flex';
-            // 同步位置
             const t = document.getElementById(THEATER_ID);
-            m.style.top = t.style.top;
-            m.style.left = t.style.left;
+            m.style.top = t.style.top; m.style.left = t.style.left;
         };
 
-        // 4. 导入逻辑
-        document.getElementById('jb-file').onchange = (e) => {
-            if(e.target.files[0]) {
-                const r = new FileReader();
-                r.onload = ev => { try{ importWorldBook(e.target.files[0], JSON.parse(ev.target.result)); }catch(err){alert("解析失败");} };
-                r.readAsText(e.target.files[0]);
-                e.target.value = '';
-            }
-        };
+        // 3. 🔥 核心：刷新按钮绑定
+        document.getElementById('jb-refresh-btn').onclick = loadActiveWorldInfo;
 
-        // 5. 生成逻辑
+        // 4. 生成按钮
         document.getElementById('jb-send').onclick = async () => {
-            const lib = getLibrary();
-            if(lib.length === 0) { alert("⚠️ 请先导入样式书！"); return; }
+            if (currentEntries.length === 0) { alert("⚠️ 请先点击【读取当前世界书】！"); return; }
             
             const val = document.getElementById('jb-select').value;
             const req = document.getElementById('jb-input').value;
             const chat = document.getElementById('jb-chat-area');
             const btn = document.getElementById('jb-send');
 
-            if(!window.SillyTavern) { alert("❌ 酒馆未连接"); return; }
+            if (!window.SillyTavern) { alert("❌ 未检测到酒馆对象"); return; }
 
-            // 抽取逻辑
-            let style = null;
-            if(val === 'random') {
-                const b = lib[Math.floor(Math.random()*lib.length)];
-                const e = b.entries[Math.floor(Math.random()*b.entries.length)];
-                style = { name: `[随机] ${e.name}`, content: e.content };
+            // 抽取样式
+            let targetStyle = null;
+            if (val === 'random') {
+                const randIdx = Math.floor(Math.random() * currentEntries.length);
+                targetStyle = currentEntries[randIdx];
             } else {
-                const [bi, ei] = val.split('_').map(Number);
-                style = lib[bi].entries[ei];
+                targetStyle = currentEntries[parseInt(val)];
             }
+            
+            // 提取名字用于显示
+            let styleName = targetStyle.comment || targetStyle.key || "随机样式";
+            if(Array.isArray(styleName)) styleName = styleName[0];
 
             btn.innerText = "⏳"; btn.disabled = true;
-            chat.innerHTML += `<div class="jb-bubble" style="color:#aaa; font-size:12px;">🎥 应用样式：${style.name}</div>`;
+            chat.innerHTML += `<div class="jb-bubble" style="color:#aaa;font-size:12px;">🎥 正在应用：${styleName}...</div>`;
             chat.scrollTop = chat.scrollHeight;
 
             try {
-                const ctx = SillyTavern.getContext();
-                const char = ctx.characters[ctx.characterId].name;
-                const mes = ctx.chat.length > 0 ? ctx.chat[ctx.chat.length-1].mes : "";
+                const context = SillyTavern.getContext();
+                const charName = context.characters[context.characterId].name;
+                const lastMes = context.chat.length > 0 ? context.chat[context.chat.length-1].mes : "";
+
+                const prompt = `
+                [Instruction: Generate content following the format below exactly.]
                 
-                const prompt = `[Instruction: Generate content following format.]\n[TEMPLATE]:\n${style.content}\n\n[Context]:\nChar: ${char}\nStory: "${mes}"\nReq: "${req}"\n\nFill template creatively.`;
+                [TEMPLATE STYLE]:
+                ${targetStyle.content}
                 
-                const res = await SillyTavern.generateRaw(prompt, "junshi_box");
+                [CONTEXT]:
+                Character: ${charName}
+                Story: "${lastMes}"
+                User Request: "${req}"
+                
+                Fill the template creatively now.
+                `;
+
+                const result = await SillyTavern.generateRaw(prompt, "junshi_direct");
                 
                 chat.innerHTML += `
                     <div class="jb-bubble">
-                        <div style="font-size:10px; color:#74b9ff;">🎨 ${style.name}</div>
-                        <div style="border-top:1px dashed #b2ebf2; padding-top:5px;">${res}</div>
-                    </div>`;
+                        <div style="font-size:10px; color:#74b9ff; margin-bottom:5px;">🎨 ${styleName}</div>
+                        <div style="border-top:1px dashed #b2ebf2; padding-top:5px;">${result}</div>
+                    </div>
+                `;
                 chat.scrollTop = chat.scrollHeight;
-            } catch(e) { 
-                chat.innerHTML += `<div style="color:red;">❌ ${e}</div>`; 
-            } finally { 
-                btn.innerText = "生成"; btn.disabled = false; 
+
+            } catch(e) {
+                chat.innerHTML += `<div style="color:red;">❌ 生成失败: ${e}</div>`;
+            } finally {
+                btn.innerText = "生成"; btn.disabled = false;
             }
         };
 
-        // 🟢 绑定万能拖拽 (应用到三个元素)
-        makeDraggable(btn, btn); // 悬浮球
-        makeDraggable(menu, menu.querySelector('.jb-header')); // 主菜单
-        makeDraggable(theater, document.getElementById('theater-header')); // 小剧场
+        // 🟢 绑定万能拖拽
+        makeDraggable(btn, btn); 
+        makeDraggable(menu, menu.querySelector('.jb-header')); 
+        makeDraggable(theater, document.getElementById('theater-header'));
     }
 
-    // 辅助：更新UI列表
-    function updateTheaterUI() {
-        const sel = document.getElementById('jb-select');
-        const st = document.getElementById('jb-status');
-        if(!sel) return;
-
-        const lib = getLibrary();
-        st.innerText = lib.length > 0 ? `📚 已存 ${lib.length} 本书` : "📂 空";
-        
-        let h = `<option value="random">🎲 随机挑选样式</option>`;
-        lib.forEach((b, bi) => {
-            h += `<optgroup label="📚 ${b.bookName}">`;
-            b.entries.forEach((e, ei) => h += `<option value="${bi}_${ei}">└─ ${e.name}</option>`);
-            h += `</optgroup>`;
-        });
-        sel.innerHTML = h;
-    }
-
-    // ================= 4. 万能拖拽函数 (无视锁死) =================
-    function makeDraggable(element, handle) {
-        let isD = false, sX, sY, iL, iT;
-        
+    // ================= 4. 万能拖拽函数 =================
+    function makeDraggable(el, handle) {
+        let isD=false, sX, sY, iL, iT;
         const start = (e) => {
-            if(e.target.tagName === 'SPAN' && e.target !== handle && !e.target.className.includes('header')) return;
-            const evt = e.touches ? e.touches[0] : e;
-            isD = true;
-            sX = evt.clientX; sY = evt.clientY;
-            const r = element.getBoundingClientRect();
-            iL = r.left; iT = r.top;
-            element.style.transition = 'none';
-            if(e.cancelable && !e.touches) e.preventDefault();
+            if(e.target.tagName==='SPAN' && e.target!==handle && !e.target.className.includes('header')) return;
+            const evt = e.touches?e.touches[0]:e; isD=true; sX=evt.clientX; sY=evt.clientY;
+            const r=el.getBoundingClientRect(); iL=r.left; iT=r.top;
+            el.style.transition='none'; if(e.cancelable && !e.touches) e.preventDefault();
         };
-
         const move = (e) => {
-            if(!isD) return;
-            if(e.cancelable) e.preventDefault();
-            const evt = e.touches ? e.touches[0] : e;
-            const dx = evt.clientX - sX;
-            const dy = evt.clientY - sY;
-            
-            element.style.setProperty('left', (iL+dx)+'px', 'important');
-            element.style.setProperty('top', (iT+dy)+'px', 'important');
-            element.style.setProperty('bottom', 'auto', 'important');
-            element.style.setProperty('right', 'auto', 'important');
+            if(!isD) return; if(e.cancelable) e.preventDefault();
+            const evt = e.touches?e.touches[0]:e;
+            const dx=evt.clientX-sX; const dy=evt.clientY-sY;
+            el.style.setProperty('left',(iL+dx)+'px','important');
+            el.style.setProperty('top',(iT+dy)+'px','important');
+            el.style.setProperty('bottom','auto','important');
+            el.style.setProperty('right','auto','important');
         };
-
-        const end = () => { if(isD) element.style.transition = ''; isD = false; };
-
-        handle.addEventListener('mousedown', start);
-        handle.addEventListener('touchstart', start, {passive: false});
-        window.addEventListener('mousemove', move);
-        window.addEventListener('touchmove', move, {passive: false});
-        window.addEventListener('mouseup', end);
-        window.addEventListener('touchend', end);
+        const end = () => { if(isD) el.style.transition=''; isD=false; };
+        handle.addEventListener('mousedown',start); handle.addEventListener('touchstart',start,{passive:false});
+        window.addEventListener('mousemove',move); window.addEventListener('touchmove',move,{passive:false});
+        window.addEventListener('mouseup',end); window.addEventListener('touchend',end);
     }
 
     // 启动
